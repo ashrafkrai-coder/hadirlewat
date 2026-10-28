@@ -27,8 +27,9 @@ settings.threshold = Number(settings.threshold);
 settings.hits = parseInt(settings.hits, 10);
 if (!Number.isFinite(settings.threshold) || settings.threshold < 0.35 || settings.threshold > 0.60) settings.threshold = defaults.threshold;
 if (!Number.isInteger(settings.hits) || settings.hits < 2 || settings.hits > 8) settings.hits = defaults.hits;
-let students = load(LS.students, []); // {id, nama, d:[[128]...]}
+let students = load(LS.students, []); // {id, nama, kelas, d:[[128]...]}
 if (!Array.isArray(students)) students = [];
+students.forEach((student) => { if (!student.kelas) student.kelas = settings.kelas || ''; });
 let attendance = load(LS.att, {}); // {"tarikh|sesi": {id: {masa, kaedah}}}
 if (!attendance || typeof attendance !== 'object' || Array.isArray(attendance)) attendance = {};
 
@@ -68,6 +69,21 @@ function save(key, value) {
 const saveSettings = () => save(LS.settings, settings);
 const saveStudents = () => save(LS.students, students);
 const saveAtt = () => save(LS.att, attendance);
+
+function activeStudents() {
+  const kelas = (settings.kelas || '').trim().toLowerCase();
+  return kelas ? students.filter((s) => String(s.kelas || '').trim().toLowerCase() === kelas) : students;
+}
+
+function refreshClassPicker() {
+  const el = $('fKelas');
+  if (!el) return;
+  const names = [...new Set(students.map((s) => String(s.kelas || '').trim()).filter(Boolean))];
+  if (settings.kelas && !names.includes(settings.kelas)) names.unshift(settings.kelas);
+  el.innerHTML = names.map((kelas) => `<option value="${esc(kelas)}">${esc(kelas)}</option>`).join('');
+  if (!names.length) el.innerHTML = '<option value="">Pilih kelas dalam Tetapan</option>';
+  el.value = settings.kelas || '';
+}
 
 async function hashAdminPin(pin, salt) {
   const bytes = new TextEncoder().encode(salt + ':' + pin);
@@ -229,17 +245,18 @@ function unmark(id) {
 function renderAttendance() {
   const rec = attendance[attKey()] || {};
   const list = $('attList');
-  const present = students.filter((s) => rec[s.id]).length;
+  const current = activeStudents();
+  const present = current.filter((s) => rec[s.id]).length;
   $('cntPresent').textContent = present;
-  $('cntAbsent').textContent = students.length - present;
-  $('cntTotal').textContent = students.length;
-  $('attEmpty').hidden = students.length > 0;
+  $('cntAbsent').textContent = current.length - present;
+  $('cntTotal').textContent = current.length;
+  $('attEmpty').hidden = current.length > 0;
 
-  const pct = students.length ? present / students.length : 0;
+  const pct = current.length ? present / current.length : 0;
   $('ringFg').style.strokeDashoffset = String(188.5 * (1 - pct));
   $('ringPct').textContent = `${Math.round(pct * 100)}%`;
 
-  list.innerHTML = students
+  list.innerHTML = activeStudents()
     .map((s) => {
       const r = rec[s.id];
       return `<li class="row ${r ? 'present' : ''}">
@@ -255,11 +272,12 @@ function renderAttendance() {
 /* ---------------- Paparan: senarai murid ---------------- */
 function renderStudents() {
   const list = $('stuList');
-  const enrolled = students.filter((s) => s.d && s.d.length >= MIN_SAMPLES).length;
-  $('enrolSummary').textContent = `${enrolled}/${students.length} berdaftar`;
-  $('stuEmpty').hidden = students.length > 0;
+  const current = activeStudents();
+  const enrolled = current.filter((s) => s.d && s.d.length >= MIN_SAMPLES).length;
+  $('enrolSummary').textContent = `${enrolled}/${current.length} berdaftar`;
+  $('stuEmpty').hidden = current.length > 0;
 
-  list.innerHTML = students
+  list.innerHTML = current
     .map((s) => {
       const n = s.d ? s.d.length : 0;
       const ok = n >= MIN_SAMPLES;
@@ -384,7 +402,7 @@ function stopLoop() {
 function matchDescriptor(desc) {
   let best = { id: null, dist: 9 };
   let second = 9;
-  for (const s of students) {
+  for (const s of activeStudents()) {
     if (!s._f || s._f.length < MIN_SAMPLES) continue;
     let m = 9;
     for (const f of s._f) {
@@ -626,7 +644,8 @@ function saveEnrol() {
 
 /* ---------------- Senarai murid ---------------- */
 function addNames(text) {
-  const existing = new Set(students.map((s) => s.nama.toLowerCase()));
+  const kelas = (settings.kelas || '').trim();
+  const existing = new Set(students.map((s) => s.kelas === kelas ? s.nama.toLowerCase() : null));
   let added = 0;
   text
     .split(/\r?\n/)
@@ -635,10 +654,11 @@ function addNames(text) {
     .forEach((nama) => {
       if (existing.has(nama.toLowerCase())) return;
       existing.add(nama.toLowerCase());
-      students.push({ id: uid(), nama, d: [], _f: [] });
+      students.push({ id: uid(), nama, kelas, d: [], _f: [] });
       added++;
     });
   saveStudents();
+  refreshClassPicker();
   renderStudents();
   renderAttendance();
   return added;
@@ -695,7 +715,7 @@ async function loadFromSheet() {
 /* ---------------- Eksport & Sheet ---------------- */
 function buildRecords() {
   const rec = attendance[attKey()] || {};
-  return students.map((s, i) => {
+  return activeStudents().map((s, i) => {
     const r = rec[s.id];
     return {
       bil: i + 1,
@@ -708,7 +728,7 @@ function buildRecords() {
 }
 
 function exportCsv() {
-  if (!students.length) return toast('Tiada murid untuk dieksport.', 'err');
+  if (!activeStudents().length) return toast('Tiada murid untuk dieksport.', 'err');
   const tarikh = $('fDate').value || todayStr();
   const sesi = ($('fSesi').value || '').trim();
   const csvSafe = (v) => {
@@ -732,7 +752,7 @@ function exportCsv() {
 
 async function sendToSheet() {
   if (!settings.scriptUrl) return toast('Isi URL Web App dalam Tetapan dahulu.', 'err');
-  if (!students.length) return toast('Tiada murid untuk dihantar.', 'err');
+  if (!activeStudents().length) return toast('Tiada murid untuk dihantar.', 'err');
   if (!navigator.onLine) return toast('Anda luar talian. Cuba lagi bila dalam talian.', 'err');
   const btn = $('btnSend');
   btn.disabled = true;
@@ -811,6 +831,13 @@ $('btnFlipScan').addEventListener('click', async () => {
 $('btnFlipEnrol').addEventListener('click', () => flipCamera($('vidEnrol'), $('statusEnrol')));
 
 $('fDate').addEventListener('change', renderAttendance);
+$('fKelas').addEventListener('change', () => {
+  settings.kelas = $('fKelas').value;
+  saveSettings();
+  $('sKelas').value = settings.kelas;
+  renderAttendance();
+  renderStudents();
+});
 $('fSesi').addEventListener('input', () => {
   settings.sesi = $('fSesi').value;
   saveSettings();
@@ -890,7 +917,11 @@ function bindSetting(id, key, transform = (v) => v, after) {
     if (after) after();
   });
 }
-bindSetting('sKelas', 'kelas', (v) => v.trim());
+bindSetting('sKelas', 'kelas', (v) => v.trim(), () => {
+  refreshClassPicker();
+  renderAttendance();
+  renderStudents();
+});
 bindSetting('sUrl', 'scriptUrl', (v) => v.trim());
 bindSetting('sToken', 'token', (v) => v.trim());
 bindSetting('sThr', 'threshold', parseFloat, () => ($('sThrVal').textContent = settings.threshold.toFixed(2)));
@@ -988,6 +1019,11 @@ $('sThr').value = settings.threshold;
 $('sThrVal').textContent = Number(settings.threshold).toFixed(2);
 $('sHits').value = settings.hits;
 $('sHitsVal').textContent = settings.hits;
+if (!settings.kelas) {
+  const firstClass = [...new Set(students.map((s) => String(s.kelas || '').trim()).filter(Boolean))][0];
+  if (firstClass) settings.kelas = firstClass;
+}
+refreshClassPicker();
 updateNet();
 renderAttendance();
 renderStudents();
