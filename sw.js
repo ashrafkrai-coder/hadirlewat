@@ -3,7 +3,7 @@
  * jadi aplikasi berfungsi sepenuhnya luar talian selepas larian pertama.
  * Tukar VERSION apabila anda mengemas kini mana-mana fail.
  */
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const CACHE = `hadir-wajah-${VERSION}`;
 
 const PRECACHE = [
@@ -26,9 +26,14 @@ const PRECACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await Promise.allSettled(PRECACHE.map(async (asset) => {
+      try { await cache.add(asset); }
+      catch (error) { console.warn('[PWA] Cache gagal:', asset, error); }
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {

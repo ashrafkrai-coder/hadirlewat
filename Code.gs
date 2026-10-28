@@ -35,6 +35,12 @@ function semakToken_(token) {
   if (wajib && String(token || '') !== wajib) throw new Error('Kod rahsia tidak sah');
 }
 
+function selamatSheet_(value) {
+  let text = String(value == null ? '' : value);
+  if (/^[=+@-]/.test(text)) text = "'" + text;
+  return text;
+}
+
 function getSS_() {
   let ss = null;
   try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
@@ -257,11 +263,23 @@ function doPost(e) {
     const d = JSON.parse(e.postData.contents);
     semakToken_(d.token);
 
+    if (d.action === 'murid') {
+      const sh = getSS_().getSheetByName(SHEET_SENARAI);
+      if (!sh) throw new Error('Tab "' + SHEET_SENARAI + '" tidak dijumpai. Jalankan fungsi sediakan() dahulu.');
+      const last = sh.getLastRow();
+      const kelas = String(d.kelas || '').trim().toLowerCase();
+      const murid = last < 2 ? [] : sh.getRange(2, 1, last - 1, 2).getValues()
+        .filter(function (r) { return r[0] && (!kelas || !r[1] || String(r[1]).trim().toLowerCase() === kelas); })
+        .map(function (r) { return selamatSheet_(r[0]); });
+      return jsonOut_({ ok: true, murid: murid });
+    }
+
     const tarikh = String(d.tarikh || '');
     const sesi = String(d.sesi || '');
     const kelas = String(d.kelas || '');
     const rekod = d.rekod || [];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tarikh)) throw new Error('Tarikh tidak sah');
+    if (!Array.isArray(rekod) || rekod.length > 5000) throw new Error('Senarai rekod tidak sah');
 
     const sh = getRekodSheet_();
     const last = sh.getLastRow();
@@ -281,20 +299,23 @@ function doPost(e) {
 
     rekod.forEach(function (r) {
       if (r.status === 'Hadir') hadir++;
-      const baris = [tarikh, sesi, kelas, r.bil, r.nama, r.status, r.masa, r.kaedah, sekarang];
-      const kunci = [tarikh, sesi, kelas, String(r.nama)].join('|');
+      if (!r || !['Hadir', 'Tidak Hadir'].includes(r.status) || typeof r.nama !== 'string' || !r.nama.trim()) throw new Error('Rekod murid tidak sah');
+      const bil = Number(r.bil);
+      if (!Number.isInteger(bil) || bil < 1) throw new Error('Nombor murid tidak sah');
+      const baris = [tarikh, selamatSheet_(sesi), selamatSheet_(kelas), bil, selamatSheet_(r.nama.trim()), r.status, selamatSheet_(r.masa), selamatSheet_(r.kaedah), sekarang];
+      const kunci = [tarikh, sesi, kelas, String(r.nama.trim())].join('|');
       if (kunci in peta) {
         const idx = peta[kunci];
         const lama = String(data[idx][5]);
         sh.getRange(idx + 2, 1, 1, HEADERS.length).setValues([baris]);
         kemas++;
         if (lama !== r.status) {
-          logBaris.push([sekarang, 'Perubahan', tarikh, sesi, kelas, r.nama, lama, r.status, r.kaedah, '']);
+          logBaris.push([sekarang, 'Perubahan', selamatSheet_(tarikh), selamatSheet_(sesi), selamatSheet_(kelas), selamatSheet_(r.nama.trim()), selamatSheet_(lama), r.status, selamatSheet_(r.kaedah), '']);
         }
       } else {
         baru.push(baris);
         if (r.status === 'Hadir') {
-          logBaris.push([sekarang, 'Perubahan', tarikh, sesi, kelas, r.nama, '-', r.status, r.kaedah, '']);
+          logBaris.push([sekarang, 'Perubahan', selamatSheet_(tarikh), selamatSheet_(sesi), selamatSheet_(kelas), selamatSheet_(r.nama.trim()), '-', r.status, selamatSheet_(r.kaedah), '']);
         }
       }
     });

@@ -23,8 +23,14 @@ const defaults = {
   consent: false
 };
 let settings = { ...defaults, ...load(LS.settings, {}) };
+settings.threshold = Number(settings.threshold);
+settings.hits = parseInt(settings.hits, 10);
+if (!Number.isFinite(settings.threshold) || settings.threshold < 0.35 || settings.threshold > 0.60) settings.threshold = defaults.threshold;
+if (!Number.isInteger(settings.hits) || settings.hits < 2 || settings.hits > 8) settings.hits = defaults.hits;
 let students = load(LS.students, []); // {id, nama, d:[[128]...]}
+if (!Array.isArray(students)) students = [];
 let attendance = load(LS.att, {}); // {"tarikh|sesi": {id: {masa, kaedah}}}
+if (!attendance || typeof attendance !== 'object' || Array.isArray(attendance)) attendance = {};
 
 let modelsReady = false;
 let stream = null;
@@ -52,8 +58,10 @@ function load(key, fallback) {
 function save(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (e) {
     toast('Gagal menyimpan data: storan penuh atau disekat.', 'err');
+    return false;
   }
 }
 const saveSettings = () => save(LS.settings, settings);
@@ -559,10 +567,11 @@ async function loadFromSheet() {
   if (!settings.scriptUrl) return toast('Isi URL Web App dalam Tetapan dahulu.', 'err');
   try {
     const u = new URL(settings.scriptUrl);
-    u.searchParams.set('action', 'murid');
-    u.searchParams.set('kelas', settings.kelas || '');
-    u.searchParams.set('token', settings.token || '');
-    const res = await fetch(u.toString());
+    const res = await fetch(u.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'murid', kelas: settings.kelas || '', token: settings.token || '' })
+    });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Ralat tidak diketahui');
     const n = addNames((data.murid || []).join('\n'));
@@ -591,10 +600,14 @@ function exportCsv() {
   if (!students.length) return toast('Tiada murid untuk dieksport.', 'err');
   const tarikh = $('fDate').value || todayStr();
   const sesi = ($('fSesi').value || '').trim();
-  const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-  const lines = [['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah'].map(q).join(',')];
+  const csvSafe = (v) => {
+    let text = String(v);
+    if (/^[=+@-]/.test(text)) text = "'" + text;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  const lines = [['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah'].map(csvSafe).join(',')];
   buildRecords().forEach((r) => {
-    lines.push([tarikh, sesi, settings.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah].map(q).join(','));
+    lines.push([tarikh, sesi, settings.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah].map(csvSafe).join(','));
   });
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -651,12 +664,32 @@ function switchTab(name) {
       $('statusScan').textContent = 'Dihentikan.';
     }
   }
-  document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + name));
+  document.querySelectorAll('.tab-btn').forEach((b) => {
+    const selected = b.dataset.tab === name;
+    b.classList.toggle('active', selected);
+    b.setAttribute('aria-selected', selected ? 'true' : 'false');
+    b.tabIndex = selected ? 0 : -1;
+  });
+  document.querySelectorAll('.tab-panel').forEach((p) => {
+    const selected = p.id === 'tab-' + name;
+    p.classList.toggle('active', selected);
+    p.setAttribute('aria-hidden', selected ? 'false' : 'true');
+  });
 }
 
 /* ---------------- Pengendali acara ---------------- */
-document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+document.querySelectorAll('.tab-btn').forEach((b) => {
+  b.setAttribute('aria-selected', b.classList.contains('active') ? 'true' : 'false');
+  b.addEventListener('click', () => switchTab(b.dataset.tab));
+  b.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault();
+    const tabs = [...document.querySelectorAll('.tab-btn')];
+    const next = (tabs.indexOf(b) + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].click();
+    tabs[next].focus();
+  });
+});
 
 $('btnScan').addEventListener('click', toggleScan);
 $('btnFlipScan').addEventListener('click', async () => {
