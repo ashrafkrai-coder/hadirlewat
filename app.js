@@ -75,7 +75,7 @@ async function hashAdminPin(pin, salt) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function initAdminLogin() {
+async function initAdminLogin(open = false) {
   const overlay = $('adminLogin');
   const setup = !load(LS.admin, null);
   $('adminPinConfirmWrap').hidden = !setup;
@@ -84,9 +84,12 @@ async function initAdminLogin() {
     : 'Masukkan PIN pentadbir untuk mengurus murid dan kehadiran manual.';
   $('adminLoginTitle').textContent = setup ? 'Tetapkan PIN pentadbir' : 'Log masuk pentadbir';
   $('adminLoginBtn').textContent = setup ? 'Simpan PIN' : 'Log masuk';
-  overlay.hidden = isAdmin;
-  if (isAdmin) return;
-  setTimeout(() => $('adminPin').focus(), 0);
+  overlay.hidden = isAdmin || !open;
+  $('adminPin').value = '';
+  $('adminPinConfirm').value = '';
+  $('adminLoginError').hidden = true;
+  if (!overlay.hidden) setTimeout(() => $('adminPin').focus(), 0);
+  updateAdminMode();
 }
 
 async function loginAdmin() {
@@ -123,16 +126,27 @@ async function loginAdmin() {
   sessionStorage.setItem('hw.admin.session', '1');
   $('adminLogin').hidden = true;
   $('logoutBtn').hidden = false;
+  $('loginAdminBtn').hidden = true;
+  updateAdminMode();
+  renderAttendance();
   initConsent();
   toast('Log masuk pentadbir berjaya.', 'ok');
 }
 
 function requireAdmin(action) {
   if (isAdmin) return true;
-  $('adminLogin').hidden = false;
+  initAdminLogin(true);
   $('adminLoginDesc').textContent = action || 'Log masuk pentadbir untuk meneruskan tindakan ini.';
-  $('adminPin').focus();
+  setTimeout(() => $('adminPin').focus(), 0);
   return false;
+}
+
+function updateAdminMode() {
+  document.querySelectorAll('[data-admin-only]').forEach((el) => { el.hidden = !isAdmin; });
+  $('loginAdminBtn').hidden = isAdmin;
+  $('logoutBtn').hidden = !isAdmin;
+  if (!isAdmin && document.querySelector('.tab-btn.active')?.dataset.tab !== 'scan') switchTab('scan');
+  renderAttendance();
 }
 
 // Cache Float32Array untuk padanan pantas
@@ -232,7 +246,7 @@ function renderAttendance() {
         ${avatar(s.nama)}
         <span class="name">${esc(s.nama)}<span class="meta">${r ? `${r.masa} · ${r.kaedah}` : 'Belum hadir'}</span></span>
         <span class="tag">${r ? '✓ Hadir' : ''}</span>
-        <span class="actions"><button class="btn btn-tiny" data-act="toggle" data-id="${s.id}">${r ? 'Batal' : 'Tanda'}</button></span>
+        ${isAdmin ? `<span class="actions"><button class="btn btn-tiny" data-act="toggle" data-id="${s.id}">${r ? 'Batal' : 'Tanda'}</button></span>` : ''}
       </li>`;
     })
     .join('');
@@ -883,6 +897,7 @@ bindSetting('sThr', 'threshold', parseFloat, () => ($('sThrVal').textContent = s
 bindSetting('sHits', 'hits', (v) => parseInt(v, 10), () => ($('sHitsVal').textContent = settings.hits));
 
 $('btnWipeFaces').addEventListener('click', () => {
+  if (!requireAdmin('Log masuk untuk memadam data wajah.')) return;
   if (!confirm('Padam data wajah SEMUA murid? Senarai nama dan rekod hadir dikekalkan.')) return;
   students.forEach((s) => {
     s.d = [];
@@ -893,6 +908,7 @@ $('btnWipeFaces').addEventListener('click', () => {
   toast('Semua data wajah dipadam.', 'ok');
 });
 $('btnWipeAll').addEventListener('click', () => {
+  if (!requireAdmin('Log masuk untuk memadam semua data.')) return;
   if (!confirm('Padam SEMUA data (murid, wajah, rekod kehadiran, tetapan)?')) return;
   if (loopActive) stopLoop();
   Object.values(LS).forEach((k) => localStorage.removeItem(k));
@@ -912,7 +928,9 @@ function initConsent() {
 }
 
 /* Pentadbir */
+$('loginAdminBtn').addEventListener('click', () => initAdminLogin(true));
 $('adminLoginBtn').addEventListener('click', loginAdmin);
+$('adminLoginCancel').addEventListener('click', () => { $('adminLogin').hidden = true; });
 $('adminPin').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') loginAdmin();
 });
@@ -923,7 +941,8 @@ $('logoutBtn').addEventListener('click', () => {
   sessionStorage.removeItem('hw.admin.session');
   isAdmin = false;
   $('logoutBtn').hidden = true;
-  initAdminLogin();
+  updateAdminMode();
+  initAdminLogin(false);
 });
 
 /* Rangkaian & pemasangan */
@@ -972,8 +991,9 @@ $('sHitsVal').textContent = settings.hits;
 updateNet();
 renderAttendance();
 renderStudents();
+updateAdminMode();
 $('logoutBtn').hidden = !isAdmin;
-initAdminLogin().then(() => {
+initAdminLogin(false).then(() => {
   if (isAdmin) initConsent();
 });
 
