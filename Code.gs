@@ -267,16 +267,14 @@ function doPost(e) {
       const sh = getSS_().getSheetByName(SHEET_SENARAI);
       if (!sh) throw new Error('Tab "' + SHEET_SENARAI + '" tidak dijumpai. Jalankan fungsi sediakan() dahulu.');
       const last = sh.getLastRow();
-      const kelas = String(d.kelas || '').trim().toLowerCase();
       const murid = last < 2 ? [] : sh.getRange(2, 1, last - 1, 2).getValues()
-        .filter(function (r) { return r[0] && (!kelas || !r[1] || String(r[1]).trim().toLowerCase() === kelas); })
-        .map(function (r) { return selamatSheet_(r[0]); });
+        .filter(function (r) { return r[0]; })
+        .map(function (r) { return { nama: selamatSheet_(r[0]), kelas: selamatSheet_(r[1]) }; });
       return jsonOut_({ ok: true, murid: murid });
     }
 
     const tarikh = String(d.tarikh || '');
     const sesi = String(d.sesi || '');
-    const kelas = String(d.kelas || '');
     const rekod = d.rekod || [];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tarikh)) throw new Error('Tarikh tidak sah');
     if (!Array.isArray(rekod) || rekod.length > 5000) throw new Error('Senarai rekod tidak sah');
@@ -298,6 +296,7 @@ function doPost(e) {
     let hadir = 0;
 
     rekod.forEach(function (r) {
+      const kelas = String(r.kelas || d.kelas || '').trim();
       if (r.status === 'Hadir') hadir++;
       if (!r || !['Hadir', 'Tidak Hadir'].includes(r.status) || typeof r.nama !== 'string' || !r.nama.trim()) throw new Error('Rekod murid tidak sah');
       const bil = Number(r.bil);
@@ -326,22 +325,23 @@ function doPost(e) {
 
     // Ringkasan hantaran + perubahan dalam Log (tambah sahaja)
     const ringkas = [
-      sekarang, 'Hantaran', tarikh, sesi, kelas, '', '', '', '',
+      sekarang, 'Hantaran', tarikh, sesi, '', '', '', '', '',
       rekod.length + ' murid, ' + hadir + ' hadir, ' + logBaris.length + ' perubahan'
     ];
     const log = getLogSheet_();
     const semua = [ringkas].concat(logBaris);
     log.getRange(log.getLastRow() + 1, 1, semua.length, LOG_HEADERS.length).setValues(semua);
 
-    binaJadual_(kelas);
+    const kelasSet = {};
+    rekod.forEach(function (r) { if (r.kelas) kelasSet[String(r.kelas)] = true; });
+    Object.keys(kelasSet).forEach(binaJadual_);
 
     return jsonOut_({
       ok: true,
       ditulis: kemas + baru.length,
       baharu: baru.length,
       dikemas: kemas,
-      perubahan: logBaris.length,
-      jadual: namaJadual_(kelas)
+      perubahan: logBaris.length
     });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err.message || err) });
@@ -373,12 +373,9 @@ function doGet(e) {
     if (last < 2) return jsonOut_({ ok: true, murid: [] });
 
     const rows = sh.getRange(2, 1, last - 1, 2).getValues();
-    const kelas = String(p.kelas || '').trim().toLowerCase();
     const murid = rows
-      .filter(function (r) {
-        return r[0] && (!kelas || !r[1] || String(r[1]).trim().toLowerCase() === kelas);
-      })
-      .map(function (r) { return String(r[0]).trim(); });
+      .filter(function (r) { return r[0]; })
+      .map(function (r) { return { nama: String(r[0]).trim(), kelas: String(r[1] || '').trim() }; });
     return jsonOut_({ ok: true, murid: murid });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err.message || err) });

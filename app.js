@@ -29,7 +29,7 @@ if (!Number.isFinite(settings.threshold) || settings.threshold < 0.35 || setting
 if (!Number.isInteger(settings.hits) || settings.hits < 2 || settings.hits > 8) settings.hits = defaults.hits;
 let students = load(LS.students, []); // {id, nama, kelas, d:[[128]...]}
 if (!Array.isArray(students)) students = [];
-students.forEach((student) => { if (!student.kelas) student.kelas = settings.kelas || ''; });
+students.forEach((student) => { if (!student.kelas) student.kelas = ''; });
 let attendance = load(LS.att, {}); // {"tarikh|sesi": {id: {masa, kaedah}}}
 if (!attendance || typeof attendance !== 'object' || Array.isArray(attendance)) attendance = {};
 
@@ -71,18 +71,7 @@ const saveStudents = () => save(LS.students, students);
 const saveAtt = () => save(LS.att, attendance);
 
 function activeStudents() {
-  const kelas = (settings.kelas || '').trim().toLowerCase();
-  return kelas ? students.filter((s) => String(s.kelas || '').trim().toLowerCase() === kelas) : students;
-}
-
-function refreshClassPicker() {
-  const el = $('fKelas');
-  if (!el) return;
-  const names = [...new Set(students.map((s) => String(s.kelas || '').trim()).filter(Boolean))];
-  if (settings.kelas && !names.includes(settings.kelas)) names.unshift(settings.kelas);
-  el.innerHTML = names.map((kelas) => `<option value="${esc(kelas)}">${esc(kelas)}</option>`).join('');
-  if (!names.length) el.innerHTML = '<option value="">Pilih kelas dalam Tetapan</option>';
-  el.value = settings.kelas || '';
+  return students;
 }
 
 async function hashAdminPin(pin, salt) {
@@ -644,7 +633,7 @@ function saveEnrol() {
 
 /* ---------------- Senarai murid ---------------- */
 function addNames(text) {
-  const kelas = (settings.kelas || '').trim();
+  const kelas = '';
   const existing = new Set(students.map((s) => s.kelas === kelas ? s.nama.toLowerCase() : null));
   let added = 0;
   text
@@ -658,7 +647,6 @@ function addNames(text) {
       added++;
     });
   saveStudents();
-  refreshClassPicker();
   renderStudents();
   renderAttendance();
   return added;
@@ -679,7 +667,7 @@ async function loadFromSheet() {
       const res = await fetch(u.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'murid', kelas: settings.kelas || '', token: settings.token || '' })
+        body: JSON.stringify({ action: 'murid', token: settings.token || '' })
       });
       const text = await res.text();
       try { data = JSON.parse(text); }
@@ -691,7 +679,6 @@ async function loadFromSheet() {
     // Fallback untuk deployment Apps Script lama yang masih hanya menyokong GET.
     if (!data) {
       u.searchParams.set('action', 'murid');
-      u.searchParams.set('kelas', settings.kelas || '');
       u.searchParams.set('token', settings.token || '');
       const res = await fetch(u.toString());
       const text = await res.text();
@@ -700,10 +687,25 @@ async function loadFromSheet() {
     }
 
     if (!data.ok) throw new Error(data.error || 'Ralat tidak diketahui');
-    const names = (Array.isArray(data.murid) ? data.murid : []).filter((name) => typeof name === 'string' && name.trim());
-    if (!names.length) throw new Error('Tiada nama murid dijumpai dalam tab Senarai.');
-    const n = addNames(names.join('\n'));
-    toast(n ? `${n} murid baharu dimuat` : 'Semua nama dari Sheet sudah ada dalam aplikasi.', n ? 'ok' : '');
+    const rows = (Array.isArray(data.murid) ? data.murid : []).map((item) =>
+      typeof item === 'string' ? { nama: item.trim(), kelas: '' } : { nama: String(item.nama || '').trim(), kelas: String(item.kelas || '').trim() }
+    ).filter((item) => item.nama);
+    if (!rows.length) throw new Error('Tiada nama murid dijumpai dalam tab Senarai.');
+    let added = 0;
+    rows.forEach((row) => {
+      const key = row.nama.toLowerCase();
+      const existing = students.find((s) => s.nama.toLowerCase() === key);
+      if (existing) {
+        existing.kelas = row.kelas || existing.kelas || '';
+      } else {
+        students.push({ id: uid(), nama: row.nama, kelas: row.kelas, d: [], _f: [] });
+        added++;
+      }
+    });
+    saveStudents();
+    renderStudents();
+    renderAttendance();
+    toast(added ? `${added} murid baharu dimuat` : 'Semua nama dan kelas dari Sheet sudah dikemas kini.', added ? 'ok' : '');
   } catch (e) {
     toast('Gagal memuat dari Sheet: ' + e.message, 'err');
   } finally {
@@ -720,6 +722,7 @@ function buildRecords() {
     return {
       bil: i + 1,
       nama: s.nama,
+      kelas: s.kelas || '',
       status: r ? 'Hadir' : 'Tidak Hadir',
       masa: r ? r.masa : '',
       kaedah: r ? r.kaedah : ''
@@ -738,7 +741,7 @@ function exportCsv() {
   };
   const lines = [['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah'].map(csvSafe).join(',')];
   buildRecords().forEach((r) => {
-    lines.push([tarikh, sesi, settings.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah].map(csvSafe).join(','));
+    lines.push([tarikh, sesi, r.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah].map(csvSafe).join(','));
   });
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -759,7 +762,7 @@ async function sendToSheet() {
   btn.textContent = 'Menghantar...';
   const payload = {
     token: settings.token || '',
-    kelas: settings.kelas || '',
+    kelas: '',
     tarikh: $('fDate').value || todayStr(),
     sesi: ($('fSesi').value || '').trim(),
     rekod: buildRecords()
@@ -831,13 +834,6 @@ $('btnFlipScan').addEventListener('click', async () => {
 $('btnFlipEnrol').addEventListener('click', () => flipCamera($('vidEnrol'), $('statusEnrol')));
 
 $('fDate').addEventListener('change', renderAttendance);
-$('fKelas').addEventListener('change', () => {
-  settings.kelas = $('fKelas').value;
-  saveSettings();
-  $('sKelas').value = settings.kelas;
-  renderAttendance();
-  renderStudents();
-});
 $('fSesi').addEventListener('input', () => {
   settings.sesi = $('fSesi').value;
   saveSettings();
@@ -917,11 +913,6 @@ function bindSetting(id, key, transform = (v) => v, after) {
     if (after) after();
   });
 }
-bindSetting('sKelas', 'kelas', (v) => v.trim(), () => {
-  refreshClassPicker();
-  renderAttendance();
-  renderStudents();
-});
 bindSetting('sUrl', 'scriptUrl', (v) => v.trim());
 bindSetting('sToken', 'token', (v) => v.trim());
 bindSetting('sThr', 'threshold', parseFloat, () => ($('sThrVal').textContent = settings.threshold.toFixed(2)));
@@ -1012,18 +1003,12 @@ document.addEventListener('visibilitychange', () => {
 /* ---------------- Permulaan ---------------- */
 $('fDate').value = todayStr();
 $('fSesi').value = settings.sesi || '';
-$('sKelas').value = settings.kelas || '';
 $('sUrl').value = settings.scriptUrl || '';
 $('sToken').value = settings.token || '';
 $('sThr').value = settings.threshold;
 $('sThrVal').textContent = Number(settings.threshold).toFixed(2);
 $('sHits').value = settings.hits;
 $('sHitsVal').textContent = settings.hits;
-if (!settings.kelas) {
-  const firstClass = [...new Set(students.map((s) => String(s.kelas || '').trim()).filter(Boolean))][0];
-  if (firstClass) settings.kelas = firstClass;
-}
-refreshClassPicker();
 updateNet();
 renderAttendance();
 renderStudents();
