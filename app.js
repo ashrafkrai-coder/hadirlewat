@@ -74,6 +74,35 @@ function activeStudents() {
   return students;
 }
 
+let studentClassFilter = '';
+
+function studentClasses() {
+  return [...new Set(students.map((s) => String(s.kelas || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'ms'));
+}
+
+function filteredStudents() {
+  return studentClassFilter
+    ? students.filter((s) => String(s.kelas || '').trim() === studentClassFilter)
+    : students;
+}
+
+function refreshStudentClassFilters() {
+  const classes = studentClasses();
+  const filter = $('studentClassFilter');
+  const add = $('addStudentClass');
+  if (filter) {
+    const selected = studentClassFilter;
+    filter.innerHTML = '<option value="">Semua kelas</option>' + classes.map((kelas) =>
+      `<option value="${esc(kelas)}">${esc(kelas)}</option>`).join('');
+    filter.value = classes.includes(selected) ? selected : '';
+    studentClassFilter = filter.value;
+  }
+  if (add) {
+    add.innerHTML = classes.map((kelas) => `<option value="${esc(kelas)}">${esc(kelas)}</option>`).join('');
+  }
+}
+
 async function hashAdminPin(pin, salt) {
   const bytes = new TextEncoder().encode(salt + ':' + pin);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -261,7 +290,7 @@ function renderAttendance() {
 /* ---------------- Paparan: senarai murid ---------------- */
 function renderStudents() {
   const list = $('stuList');
-  const current = activeStudents();
+  const current = filteredStudents();
   const enrolled = current.filter((s) => s.d && s.d.length >= MIN_SAMPLES).length;
   $('enrolSummary').textContent = `${enrolled}/${current.length} berdaftar`;
   $('stuEmpty').hidden = current.length > 0;
@@ -272,7 +301,7 @@ function renderStudents() {
       const ok = n >= MIN_SAMPLES;
       return `<li class="row ${ok ? 'present' : ''}">
         ${avatar(s.nama)}
-        <span class="name">${esc(s.nama)}<span class="meta">${ok ? n + ' sampel wajah' : 'Belum daftar wajah'}</span></span>
+        <span class="name">${esc(s.nama)}<span class="meta">${esc(s.kelas || 'Kelas belum ditetapkan')} · ${ok ? n + ' sampel wajah' : 'Belum daftar wajah'}</span></span>
         <span class="actions">
           <button class="btn btn-tiny" data-act="enrol" data-id="${s.id}">${ok ? 'Daftar semula' : 'Daftar wajah'}</button>
           ${n ? `<button class="btn btn-tiny" data-act="clearface" data-id="${s.id}">Padam wajah</button>` : ''}
@@ -633,7 +662,7 @@ function saveEnrol() {
 
 /* ---------------- Senarai murid ---------------- */
 function addNames(text) {
-  const kelas = '';
+  const kelas = $('addStudentClass') ? $('addStudentClass').value.trim() : '';
   const existing = new Set(students.map((s) => s.kelas === kelas ? s.nama.toLowerCase() : null));
   let added = 0;
   text
@@ -647,6 +676,7 @@ function addNames(text) {
       added++;
     });
   saveStudents();
+  refreshStudentClassFilters();
   renderStudents();
   renderAttendance();
   return added;
@@ -703,6 +733,7 @@ async function loadFromSheet() {
       }
     });
     saveStudents();
+    refreshStudentClassFilters();
     renderStudents();
     renderAttendance();
     toast(added ? `${added} murid baharu dimuat` : 'Semua nama dan kelas dari Sheet sudah dikemas kini.', added ? 'ok' : '');
@@ -833,6 +864,10 @@ $('btnFlipScan').addEventListener('click', async () => {
 });
 $('btnFlipEnrol').addEventListener('click', () => flipCamera($('vidEnrol'), $('statusEnrol')));
 
+$('studentClassFilter').addEventListener('change', (e) => {
+  studentClassFilter = e.target.value;
+  renderStudents();
+});
 $('fDate').addEventListener('change', renderAttendance);
 $('fSesi').addEventListener('input', () => {
   settings.sesi = $('fSesi').value;
@@ -886,6 +921,7 @@ $('stuList').addEventListener('click', (e) => {
       if (confirm(`Buang ${s.nama} daripada senarai (termasuk data wajah)?`)) {
         students = students.filter((x) => x.id !== id);
         saveStudents();
+        refreshStudentClassFilters();
         renderStudents();
         renderAttendance();
       }
@@ -1009,6 +1045,7 @@ $('sThr').value = settings.threshold;
 $('sThrVal').textContent = Number(settings.threshold).toFixed(2);
 $('sHits').value = settings.hits;
 $('sHitsVal').textContent = settings.hits;
+refreshStudentClassFilters();
 updateNet();
 renderAttendance();
 renderStudents();

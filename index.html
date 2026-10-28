@@ -95,7 +95,11 @@
 
           <h2 class="section-label">Tambah murid</h2>
           <div class="group pad">
-            <p class="muted">Tampal senarai nama, satu nama sebaris.</p>
+            <p class="muted">Pilih kelas dan tampal senarai nama, satu nama sebaris.</p>
+            <label class="form-row">
+              <span class="form-label">Kelas</span>
+              <select id="addStudentClass" aria-label="Kelas murid baharu"></select>
+            </label>
             <textarea id="namesInput" rows="5" placeholder="Ali bin Abu&#10;Siti binti Ahmad&#10;..."></textarea>
             <div class="controls tight">
               <button id="btnAddNames" class="btn btn-primary">Tambah</button>
@@ -103,6 +107,14 @@
             </div>
           </div>
 
+          <div class="group pad">
+            <label class="form-row">
+              <span class="form-label">Tapis kelas</span>
+              <select id="studentClassFilter" aria-label="Pilih kelas untuk senarai murid">
+                <option value="">Semua kelas</option>
+              </select>
+            </label>
+          </div>
           <div class="section-head">
             <h2 class="section-label">Senarai murid</h2>
             <span id="enrolSummary" class="pill">0/0 berdaftar</span>
