@@ -306,6 +306,10 @@ input[type="range"] { width: 100%; accent-color: var(--blue); height: 28px; }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .sheet-icon { width: 60px; height: 60px; border-radius: 18px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; background: linear-gradient(150deg, #5ac8fa, var(--blue)); }
 .sheet-icon svg { width: 34px; height: 34px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.admin-login-sheet { max-width: 390px; }
+.login-field { display: grid; gap: 7px; margin: 14px 0; font-weight: 600; }
+.login-field input { width: 100%; border: 1px solid var(--sep); border-radius: 12px; background: var(--elev); color: var(--text); font: inherit; padding: 12px 14px; letter-spacing: .16em; }
+.login-error { color: var(--red) !important; font-weight: 600; }
 .sheet h2 { margin: 0 0 10px; text-align: center; font-size: 22px; letter-spacing: -0.02em; }
 .sheet p { margin: 0 0 10px; font-size: 15px; }
 .sheet .muted { font-size: 13.5px; }

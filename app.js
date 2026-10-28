@@ -5,7 +5,7 @@
 import * as faceapi from './vendor/face-api.esm.js';
 
 const MODEL_URL = './vendor/models';
-const LS = { settings: 'hw.settings', students: 'hw.students', att: 'hw.att' };
+const LS = { settings: 'hw.settings', students: 'hw.students', att: 'hw.att', admin: 'hw.admin.auth' };
 const MIN_SAMPLES = 3;
 const MAX_SAMPLES = 8;
 const MARGIN = 0.03; // beza minima antara padanan terbaik & kedua (elak keliru)
@@ -45,6 +45,7 @@ let frames = 0;
 let fpsLast = performance.now();
 let toastTimer = 0;
 let audioCtx = null;
+let isAdmin = sessionStorage.getItem('hw.admin.session') === '1';
 
 /* ---------------- Simpanan ---------------- */
 function load(key, fallback) {
@@ -67,6 +68,72 @@ function save(key, value) {
 const saveSettings = () => save(LS.settings, settings);
 const saveStudents = () => save(LS.students, students);
 const saveAtt = () => save(LS.att, attendance);
+
+async function hashAdminPin(pin, salt) {
+  const bytes = new TextEncoder().encode(salt + ':' + pin);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function initAdminLogin() {
+  const overlay = $('adminLogin');
+  const setup = !load(LS.admin, null);
+  $('adminPinConfirmWrap').hidden = !setup;
+  $('adminLoginDesc').textContent = setup
+    ? 'Tetapkan PIN pentadbir buat kali pertama. Gunakan sekurang-kurangnya 4 digit.'
+    : 'Masukkan PIN pentadbir untuk mengurus murid dan kehadiran manual.';
+  $('adminLoginTitle').textContent = setup ? 'Tetapkan PIN pentadbir' : 'Log masuk pentadbir';
+  $('adminLoginBtn').textContent = setup ? 'Simpan PIN' : 'Log masuk';
+  overlay.hidden = isAdmin;
+  if (isAdmin) return;
+  setTimeout(() => $('adminPin').focus(), 0);
+}
+
+async function loginAdmin() {
+  const pin = $('adminPin').value.trim();
+  const confirmPin = $('adminPinConfirm').value.trim();
+  const error = $('adminLoginError');
+  error.hidden = true;
+  if (!/^\d{4,12}$/.test(pin)) {
+    error.textContent = 'PIN mesti 4 hingga 12 digit.';
+    error.hidden = false;
+    return;
+  }
+
+  const stored = load(LS.admin, null);
+  if (!stored) {
+    if (pin !== confirmPin) {
+      error.textContent = 'Sahkan PIN tidak sepadan.';
+      error.hidden = false;
+      return;
+    }
+    const salt = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    if (!save(LS.admin, { salt, hash: await hashAdminPin(pin, salt) })) return;
+  } else {
+    const hash = await hashAdminPin(pin, stored.salt);
+    if (hash !== stored.hash) {
+      error.textContent = 'PIN tidak betul.';
+      error.hidden = false;
+      $('adminPin').select();
+      return;
+    }
+  }
+
+  isAdmin = true;
+  sessionStorage.setItem('hw.admin.session', '1');
+  $('adminLogin').hidden = true;
+  $('logoutBtn').hidden = false;
+  initConsent();
+  toast('Log masuk pentadbir berjaya.', 'ok');
+}
+
+function requireAdmin(action) {
+  if (isAdmin) return true;
+  $('adminLogin').hidden = false;
+  $('adminLoginDesc').textContent = action || 'Log masuk pentadbir untuk meneruskan tindakan ini.';
+  $('adminPin').focus();
+  return false;
+}
 
 // Cache Float32Array untuk padanan pantas
 function hydrate() {
@@ -565,19 +632,49 @@ function addNames(text) {
 
 async function loadFromSheet() {
   if (!settings.scriptUrl) return toast('Isi URL Web App dalam Tetapan dahulu.', 'err');
+  const btn = $('btnLoadSheet');
+  btn.disabled = true;
+  btn.textContent = 'Memuat...';
   try {
     const u = new URL(settings.scriptUrl);
-    const res = await fetch(u.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'murid', kelas: settings.kelas || '', token: settings.token || '' })
-    });
-    const data = await res.json();
+    u.pathname = u.pathname.replace(/\/dev$/, '/exec');
+
+    let data;
+    let errorMessage = '';
+    try {
+      const res = await fetch(u.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'murid', kelas: settings.kelas || '', token: settings.token || '' })
+      });
+      const text = await res.text();
+      try { data = JSON.parse(text); }
+      catch { errorMessage = text.trim().slice(0, 160); }
+    } catch (e) {
+      errorMessage = e.message;
+    }
+
+    // Fallback untuk deployment Apps Script lama yang masih hanya menyokong GET.
+    if (!data) {
+      u.searchParams.set('action', 'murid');
+      u.searchParams.set('kelas', settings.kelas || '');
+      u.searchParams.set('token', settings.token || '');
+      const res = await fetch(u.toString());
+      const text = await res.text();
+      try { data = JSON.parse(text); }
+      catch { throw new Error(errorMessage || text.trim().slice(0, 160) || 'Pelayan tidak mengembalikan JSON.'); }
+    }
+
     if (!data.ok) throw new Error(data.error || 'Ralat tidak diketahui');
-    const n = addNames((data.murid || []).join('\n'));
-    toast(`${n} murid baharu dimuat`, 'ok');
+    const names = (Array.isArray(data.murid) ? data.murid : []).filter((name) => typeof name === 'string' && name.trim());
+    if (!names.length) throw new Error('Tiada nama murid dijumpai dalam tab Senarai.');
+    const n = addNames(names.join('\n'));
+    toast(n ? `${n} murid baharu dimuat` : 'Semua nama dari Sheet sudah ada dalam aplikasi.', n ? 'ok' : '');
   } catch (e) {
     toast('Gagal memuat dari Sheet: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Dari Sheet';
   }
 }
 
@@ -709,6 +806,7 @@ $('fSesi').addEventListener('input', () => {
 $('attList').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-act="toggle"]');
   if (!b) return;
+  if (!requireAdmin('Log masuk untuk menanda atau membatalkan kehadiran manual.')) return;
   const id = b.dataset.id;
   const rec = currentAtt();
   if (rec[id]) unmark(id);
@@ -716,13 +814,16 @@ $('attList').addEventListener('click', (e) => {
 });
 
 $('btnAddNames').addEventListener('click', () => {
+  if (!requireAdmin('Log masuk untuk menambah murid.')) return;
   const t = $('namesInput').value;
   if (!t.trim()) return toast('Tampal senarai nama dahulu.', 'err');
   const n = addNames(t);
   $('namesInput').value = '';
   toast(n ? `${n} murid ditambah` : 'Tiada nama baharu (mungkin sudah ada).', n ? 'ok' : '');
 });
-$('btnLoadSheet').addEventListener('click', loadFromSheet);
+$('btnLoadSheet').addEventListener('click', () => {
+  if (requireAdmin('Log masuk untuk menarik senarai murid daripada Google Sheet.')) loadFromSheet();
+});
 
 $('stuList').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-act]');
@@ -732,9 +833,10 @@ $('stuList').addEventListener('click', (e) => {
   if (!s) return;
   switch (b.dataset.act) {
     case 'enrol':
-      startEnrol(id);
+      if (requireAdmin('Log masuk untuk mendaftar atau mengemas kini wajah murid.')) startEnrol(id);
       break;
     case 'clearface':
+      if (!requireAdmin('Log masuk untuk memadam data wajah murid.')) break;
       if (confirm(`Padam data wajah ${s.nama}?`)) {
         s.d = [];
         s._f = [];
@@ -743,6 +845,7 @@ $('stuList').addEventListener('click', (e) => {
       }
       break;
     case 'remove':
+      if (!requireAdmin('Log masuk untuk membuang murid.')) break;
       if (confirm(`Buang ${s.nama} daripada senarai (termasuk data wajah)?`)) {
         students = students.filter((x) => x.id !== id);
         saveStudents();
@@ -808,6 +911,21 @@ function initConsent() {
   });
 }
 
+/* Pentadbir */
+$('adminLoginBtn').addEventListener('click', loginAdmin);
+$('adminPin').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loginAdmin();
+});
+$('adminPinConfirm').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loginAdmin();
+});
+$('logoutBtn').addEventListener('click', () => {
+  sessionStorage.removeItem('hw.admin.session');
+  isAdmin = false;
+  $('logoutBtn').hidden = true;
+  initAdminLogin();
+});
+
 /* Rangkaian & pemasangan */
 function updateNet() {
   const on = navigator.onLine;
@@ -854,5 +972,8 @@ $('sHitsVal').textContent = settings.hits;
 updateNet();
 renderAttendance();
 renderStudents();
-initConsent();
+$('logoutBtn').hidden = !isAdmin;
+initAdminLogin().then(() => {
+  if (isAdmin) initConsent();
+});
 

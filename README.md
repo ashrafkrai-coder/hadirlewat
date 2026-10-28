@@ -26,6 +26,7 @@ Buka `http://localhost:8000`. Kamera hanya dibenarkan pada `localhost` atau HTTP
 4. Deploy > New deployment > jenis **Web app** > Execute as: **Me** > Who has access: **Anyone** > Deploy.
 5. Salin URL `/exec` ke Tetapan aplikasi (dan kod rahsia jika ada).
 6. Untuk muat nama murid dari Sheet: buat tab `Senarai` dengan Nama di lajur A (dan Kelas di lajur B, pilihan).
+   Klik **Murid > Dari Sheet** dalam aplikasi. Buka **Tetapan > Nama kelas** jika nama hanya perlu dipadankan untuk satu kelas tertentu; kosongkan nama kelas untuk memuat semua nama.
    Rekod hadir ditulis ke tab `Kehadiran` (dicipta automatik). Menghantar semula tidak menggandakan baris.
 
 Selepas mengubah `Code.gs`, buat **New version** pada deployment yang sama
@@ -50,7 +51,7 @@ selepas muat semula Sheet) supaya tab dicipta serta-merta, tidak perlu tunggu ha
    atau tambah Script property `SHEET_ID`.
 2. Pastikan deployment: Execute as **Me**, Who has access **Anyone**, dan sudah **New version** selepas tampal kod terkini.
 3. Dalam aplikasi, URL mesti URL `/exec` (bukan `/dev`) dan mesti tekan **Hantar ke Google Sheet** (rekod tidak dihantar automatik).
-4. Jika guna kod rahsia, ia mesti sama dalam Script property `TOKEN` dan Tetapan aplikasi.
+4. Jika guna kod rahsia, ia mesti sama dalam Script property `TOKEN` dan Tetapan aplikasi. Selepas mengubah `Code.gs`, buat deployment baharu untuk menyokong butang **Dari Sheet** melalui POST: Deploy > Manage deployments > pensel > Version: New version > Deploy. URL mesti berakhir `/exec`, bukan `/dev`.
 5. Mesej ralat dari pelayan dipaparkan sebagai banner merah dalam aplikasi selepas tekan hantar.
 
 ## Privasi (PDPA 2010)
