@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Hadir Wajah</title>
+  <meta name="description" content="Rekod kehadiran murid melalui pengecaman wajah. Data wajah disimpan pada peranti guru sahaja." />
+
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Hadir Wajah" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="navbar">
+      <div class="nav-side"><span id="netBadge" class="pill pill-online">Dalam talian</span></div>
+      <div class="nav-title">Hadir Wajah</div>
+      <div class="nav-side nav-right"><button id="installBtn" class="btn-link" hidden>Pasang</button></div>
+    </header>
+
+    <main class="main">
+      <!-- ============ TAB IMBAS ============ -->
+      <section id="tab-scan" class="tab-panel active">
+        <h1 class="large-title">Kehadiran</h1>
+
+        <div class="group">
+          <label class="form-row">
+            <span class="form-label">Tarikh</span>
+            <input type="date" id="fDate" />
+          </label>
+          <label class="form-row">
+            <span class="form-label">Sesi</span>
+            <input type="text" id="fSesi" placeholder="cth: P1 Pendidikan Islam" maxlength="60" />
+          </label>
+        </div>
+
+        <div class="stage" id="stageScan">
+          <video id="vidScan" playsinline muted autoplay></video>
+          <canvas id="cvScan"></canvas>
+          <span class="bracket tl"></span><span class="bracket tr"></span>
+          <span class="bracket bl"></span><span class="bracket br"></span>
+          <div class="fps-tag" id="fpsTag" hidden>0 FPS</div>
+          <div class="placeholder" id="phScan">
+            <svg class="glyph" viewBox="0 0 64 64" aria-hidden="true">
+              <path d="M8 22V14a6 6 0 0 1 6-6h8M42 8h8a6 6 0 0 1 6 6v8M56 42v8a6 6 0 0 1-6 6h-8M22 56h-8a6 6 0 0 1-6-6v-8" />
+              <path d="M24 26v4M40 26v4M32 28v8h-3M24 43c4 4 12 4 16 0" />
+            </svg>
+            <p id="phScanText">Tekan <strong>Mula Imbas</strong>. Murid melihat ke kamera satu demi satu atau beberapa orang sekali gus.</p>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="btnScan" class="btn btn-primary">Mula Imbas</button>
+          <button id="btnFlipScan" class="btn" disabled>Tukar Kamera</button>
+        </div>
+        <p id="statusScan" class="status-line" role="status">Sedia.</p>
+
+        <div class="summary-card">
+          <div class="ring" aria-hidden="true">
+            <svg viewBox="0 0 72 72">
+              <circle class="ring-bg" cx="36" cy="36" r="30" />
+              <circle id="ringFg" class="ring-fg" cx="36" cy="36" r="30" />
+            </svg>
+            <span id="ringPct">0%</span>
+          </div>
+          <div class="stats">
+            <div class="stat"><b id="cntPresent" class="c-ok">0</b><small>Hadir</small></div>
+            <div class="stat"><b id="cntAbsent" class="c-warn">0</b><small>Belum</small></div>
+            <div class="stat"><b id="cntTotal">0</b><small>Jumlah</small></div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Senarai murid</h2>
+        <ul id="attList" class="list"></ul>
+        <p id="attEmpty" class="empty" hidden>Belum ada murid. Buka tab <strong>Murid</strong> untuk menambah senarai.</p>
+
+        <div class="controls">
+          <button id="btnCsv" class="btn">Eksport CSV</button>
+          <button id="btnSend" class="btn btn-tint">Hantar ke Google Sheet</button>
+        </div>
+      </section>
+
+      <!-- ============ TAB MURID ============ -->
+      <section id="tab-students" class="tab-panel">
+        <div id="listView">
+          <h1 class="large-title">Murid</h1>
+
+          <h2 class="section-label">Tambah murid</h2>
+          <div class="group pad">
+            <p class="muted">Tampal senarai nama, satu nama sebaris.</p>
+            <textarea id="namesInput" rows="5" placeholder="Ali bin Abu&#10;Siti binti Ahmad&#10;..."></textarea>
+            <div class="controls tight">
+              <button id="btnAddNames" class="btn btn-primary">Tambah</button>
+              <button id="btnLoadSheet" class="btn">Dari Sheet</button>
+            </div>
+          </div>
+
+          <div class="section-head">
+            <h2 class="section-label">Senarai murid</h2>
+            <span id="enrolSummary" class="pill">0/0 berdaftar</span>
+          </div>
+          <ul id="stuList" class="list"></ul>
+          <p id="stuEmpty" class="empty">Tiada murid lagi.</p>
+        </div>
+
+        <!-- Panel pendaftaran wajah -->
+        <div id="enrolView" hidden>
+          <h1 class="large-title small">Daftar Wajah</h1>
+          <p id="enrolTitle" class="enrol-name">Daftar wajah</p>
+          <p class="muted">Ambil 3 hingga 8 sampel: pandang depan, sedikit ke kiri, sedikit ke kanan, dengan dan tanpa senyuman. Hanya satu wajah dalam bingkai.</p>
+
+          <div class="stage" id="stageEnrol">
+            <video id="vidEnrol" playsinline muted autoplay></video>
+            <canvas id="cvEnrol"></canvas>
+            <span class="bracket tl"></span><span class="bracket tr"></span>
+            <span class="bracket bl"></span><span class="bracket br"></span>
+            <div class="placeholder" id="phEnrol">
+              <svg class="glyph" viewBox="0 0 64 64" aria-hidden="true">
+                <path d="M8 22V14a6 6 0 0 1 6-6h8M42 8h8a6 6 0 0 1 6 6v8M56 42v8a6 6 0 0 1-6 6h-8M22 56h-8a6 6 0 0 1-6-6v-8" />
+                <path d="M24 26v4M40 26v4M32 28v8h-3M24 43c4 4 12 4 16 0" />
+              </svg>
+              <p>Memulakan kamera...</p>
+            </div>
+          </div>
+          <p id="statusEnrol" class="status-line" role="status"></p>
+          <div class="controls">
+            <button id="btnSample" class="btn btn-primary">Ambil sampel (0)</button>
+            <button id="btnFlipEnrol" class="btn">Tukar Kamera</button>
+          </div>
+          <div class="controls">
+            <button id="btnEnrolSave" class="btn btn-tint" disabled>Simpan</button>
+            <button id="btnEnrolReset" class="btn">Ulang</button>
+            <button id="btnEnrolCancel" class="btn btn-danger">Batal</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ TAB TETAPAN ============ -->
+      <section id="tab-settings" class="tab-panel">
+        <h1 class="large-title">Tetapan</h1>
+
+        <h2 class="section-label">Kelas</h2>
+        <div class="group">
+          <label class="form-row">
+            <span class="form-label">Nama kelas</span>
+            <input type="text" id="sKelas" placeholder="cth: 5 Anjal" maxlength="60" />
+          </label>
+        </div>
+
+        <h2 class="section-label">Ketepatan pengecaman</h2>
+        <div class="group pad">
+          <label class="slider">
+            <span class="slider-head"><span>Kekuatan padanan</span><strong id="sThrVal">0.50</strong></span>
+            <input type="range" id="sThr" min="0.35" max="0.60" step="0.01" value="0.50" />
+            <small class="muted">Nilai kecil = lebih ketat.</small>
+          </label>
+          <div class="hair"></div>
+          <label class="slider">
+            <span class="slider-head"><span>Bingkai pengesahan</span><strong id="sHitsVal">3</strong></span>
+            <input type="range" id="sHits" min="2" max="8" step="1" value="3" />
+            <small class="muted">Lebih tinggi = lebih selamat daripada salah kenal.</small>
+          </label>
+        </div>
+
+        <h2 class="section-label">Google Sheet</h2>
+        <div class="group">
+          <label class="form-row">
+            <span class="form-label">URL Web App</span>
+            <input type="url" id="sUrl" placeholder="https://script.google.com/..." />
+          </label>
+          <label class="form-row">
+            <span class="form-label">Kod rahsia</span>
+            <input type="text" id="sToken" placeholder="pilihan" autocomplete="off" />
+          </label>
+        </div>
+        <p class="footnote">Tampal URL Web App Apps Script (lihat README). Kosongkan jika tidak mahu menggunakannya.</p>
+
+        <h2 class="section-label">Privasi &amp; data</h2>
+        <div class="group pad warn">
+          <ul class="bullets">
+            <li>Gambar murid <strong>tidak disimpan</strong>. Hanya kod angka wajah (128 nombor) disimpan pada peranti ini.</li>
+            <li>Video tidak dihantar ke mana-mana pelayan. Hanya nama, status dan masa hadir dihantar ke Sheet anda jika anda tekan hantar.</li>
+            <li>Tiada pengesanan "hidup" (liveness): foto boleh mengelirukan sistem. Guru perlu memerhati semasa imbasan.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <button id="btnWipeFaces" class="action-row danger">Padam semua data wajah</button>
+          <button id="btnWipeAll" class="action-row danger">Padam semua data</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="iosHint" class="ios-hint" hidden>
+      Pada iPhone/iPad: tekan <strong>Kongsi</strong> kemudian <strong>Tambah ke Skrin Utama</strong>.
+    </div>
+
+    <nav class="tabbar" role="tablist" aria-label="Navigasi utama">
+      <button class="tab-btn active" data-tab="scan" role="tab">
+        <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 10V7a3 3 0 0 1 3-3h3M18 4h3a3 3 0 0 1 3 3v3M24 18v3a3 3 0 0 1-3 3h-3M10 24H7a3 3 0 0 1-3-3v-3" /><path d="M10.5 11.5v2M17.5 11.5v2M14 12v4h-1.5M10.5 18.5c2 2 5 2 7 0" /></svg>
+        <span>Imbas</span>
+      </button>
+      <button class="tab-btn" data-tab="students" role="tab">
+        <svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="11" cy="10" r="4" /><path d="M3.5 23c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" /><path d="M18.5 6.4a4 4 0 0 1 0 7.2M21 16.8c2.2.9 3.5 3 3.5 6" /></svg>
+        <span>Murid</span>
+      </button>
+      <button class="tab-btn" data-tab="settings" role="tab">
+        <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 8h10M21 8h2M5 20h2M13 20h10" /><circle cx="18" cy="8" r="3" /><circle cx="10" cy="20" r="3" /></svg>
+        <span>Tetapan</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Persetujuan kali pertama -->
+  <div id="consent" class="overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="consentTitle">
+      <div class="sheet-icon" aria-hidden="true">
+        <svg viewBox="0 0 28 28"><path d="M14 3 5 6.5v7c0 5.5 3.6 9.6 9 11.5 5.4-1.9 9-6 9-11.5v-7z" /><path d="m10 14 3 3 5-6" /></svg>
+      </div>
+      <h2 id="consentTitle">Sebelum bermula</h2>
+      <p>Wajah murid ialah <strong>data peribadi sensitif</strong> di bawah Akta Perlindungan Data Peribadi 2010 (PDPA). Pastikan anda telah mendapat kebenaran pihak sekolah dan penjaga murid sebelum mendaftarkan wajah mereka.</p>
+      <p class="muted">Aplikasi ini hanya menyimpan kod angka wajah pada peranti ini, bukan gambar. Anda boleh memadamnya bila-bila masa dalam Tetapan.</p>
+      <label class="check">
+        <input type="checkbox" id="consentCheck" />
+        <span>Saya faham dan telah mendapat kebenaran yang diperlukan.</span>
+      </label>
+      <button id="consentBtn" class="btn btn-primary block" disabled>Teruskan</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('./sw.js')
+          .then((reg) => console.log('[PWA] Service Worker didaftarkan:', reg.scope))
+          .catch((err) => console.warn('[PWA] Pendaftaran SW gagal:', err));
+      });
+    }
+  </script>
+</body>
+</html>
