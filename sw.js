@@ -1,16 +1,17 @@
-/* Service Worker - Hadir Wajah
+/* Service Worker - Hadir Lewat
  * Semua aset (termasuk pustaka AI dan model) dihos tempatan dan di-cache semasa install,
  * jadi aplikasi berfungsi sepenuhnya luar talian selepas larian pertama.
  * Tukar VERSION apabila anda mengemas kini mana-mana fail.
  */
-const VERSION = 'v1.2.0';
-const CACHE = `hadir-wajah-${VERSION}`;
+const VERSION = 'v1.3.0-hadir-lewat';
+const CACHE = `hadir-lewat-${VERSION}`;
 
 const PRECACHE = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './lateRules.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

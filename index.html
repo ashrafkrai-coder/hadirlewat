@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Hadir Wajah</title>
+  <title>Hadir Lewat</title>
   <meta name="description" content="Rekod kehadiran murid melalui pengecaman wajah. Data wajah disimpan pada peranti guru sahaja." />
 
   <link rel="manifest" href="manifest.json" />
@@ -13,7 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Hadir Wajah" />
+  <meta name="apple-mobile-web-app-title" content="Hadir Lewat" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="style.css" />
@@ -22,7 +22,7 @@
   <div class="app">
     <header class="navbar">
       <div class="nav-side"><span id="netBadge" class="pill pill-online">Dalam talian</span></div>
-      <div class="nav-title">Hadir Wajah</div>
+      <div class="nav-title">Hadir Lewat</div>
       <div class="nav-side nav-right"><button id="loginAdminBtn" class="btn-link">Pentadbir</button><button id="logoutBtn" class="btn-link" hidden>Log keluar</button><button id="installBtn" class="btn-link" hidden>Pasang</button></div>
     </header>
 
@@ -78,6 +78,12 @@
           </div>
         </div>
 
+        <h2 class="section-label">Cari murid</h2>
+        <div class="group pad">
+          <label class="form-row"><span class="form-label">Nama</span><input id="attNameSearch" type="search" placeholder="Taip nama murid" autocomplete="off" /></label>
+          <label class="form-row"><span class="form-label">Kelas</span><select id="attClassSearch"><option value="">Semua kelas</option></select></label>
+          <p class="muted">Nama disembunyikan sehingga dipadankan oleh wajah atau ditemui melalui carian.</p>
+        </div>
         <h2 class="section-label">Senarai murid</h2>
         <ul id="attList" class="list"></ul>
         <p id="attEmpty" class="empty" hidden>Belum ada murid. Buka tab <strong>Murid</strong> untuk menambah senarai.</p>
@@ -174,6 +180,30 @@
           </label>
         </div>
 
+        <h2 class="section-label">Mod &amp; prestasi kamera</h2>
+        <div class="group pad">
+          <label class="form-row"><span class="form-label">Mod laluan masuk</span><select id="sQueueMode"><option value="false">Ramai serentak</option><option value="true">Murid satu demi satu</option></select></label>
+          <label class="form-row"><span class="form-label">Maksimum wajah</span><select id="sMaxFaces"><option value="3">3 wajah</option><option value="5">5 wajah</option><option value="8">8 wajah</option></select></label>
+          <label class="form-row"><span class="form-label">Resolusi kamera</span><select id="sResolution"><option value="480">480p (pantas)</option><option value="720">720p (seimbang)</option><option value="1080">1080p (tajam)</option></select></label>
+          <label class="form-row"><span class="form-label">Saiz model AI</span><select id="sInputSize"><option value="224">224 (pantas)</option><option value="416">416 (seimbang)</option><option value="608">608 (tepat)</option></select></label>
+        </div>
+
+        <h2 class="section-label">Maklum balas &amp; keselamatan</h2>
+        <div class="group pad">
+          <label class="check"><input type="checkbox" id="sSound" /><span>Bunyi selepas rekod</span></label>
+          <label class="check"><input type="checkbox" id="sVibration" /><span>Getaran peranti</span></label>
+          <label class="check"><input type="checkbox" id="sSpeech" /><span>Ucap nama murid</span></label>
+          <label class="form-row"><span class="form-label">Pentadbir tamat selepas</span><select id="sAdminMinutes"><option value="15">15 minit</option><option value="30">30 minit</option><option value="60">60 minit</option></select></label>
+        </div>
+
+        <h2 class="section-label">Sandaran &amp; storan</h2>
+        <div class="group pad">
+          <p id="storageInfo" class="muted">Mengira penggunaan storan...</p>
+          <div class="controls tight"><button id="btnBackup" class="btn">Muat turun sandaran</button><button id="btnRestore" class="btn">Pulihkan sandaran</button></div>
+          <input id="restoreFile" type="file" accept="application/json,.json" hidden />
+          <p id="lastSyncInfo" class="muted">Belum pernah dihantar ke Google Sheet.</p>
+        </div>
+
         <h2 class="section-label">Google Sheet</h2>
         <div class="group">
           <label class="form-row">
@@ -200,6 +230,18 @@
           <button id="btnWipeAll" class="action-row danger">Padam semua data</button>
         </div>
       </section>
+
+      <!-- ============ TAB LAPORAN ============ -->
+      <section id="tab-reports" class="tab-panel" role="tabpanel" aria-labelledby="tabBtnReports" aria-hidden="true">
+        <h1 class="large-title">Laporan Lewat</h1>
+        <div class="group pad">
+          <label class="form-row"><span class="form-label">Bulan</span><input type="month" id="reportMonth" /></label>
+          <div class="controls tight"><button id="btnReportRefresh" class="btn btn-primary">Kemaskini laporan</button><button id="btnReportCsv" class="btn">Eksport CSV</button></div>
+        </div>
+        <h2 class="section-label">Ringkasan murid</h2>
+        <ul id="lateReport" class="list"></ul>
+        <p id="lateReportEmpty" class="empty">Tiada rekod lewat pada bulan dipilih.</p>
+      </section>
     </main>
 
     <div id="iosHint" class="ios-hint" hidden>
@@ -214,6 +256,10 @@
       <button id="tabBtnStudents" class="tab-btn" data-tab="students" data-admin-only hidden role="tab" aria-controls="tab-students" aria-selected="false" tabindex="-1">
         <svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="11" cy="10" r="4" /><path d="M3.5 23c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" /><path d="M18.5 6.4a4 4 0 0 1 0 7.2M21 16.8c2.2.9 3.5 3 3.5 6" /></svg>
         <span>Murid</span>
+      </button>
+      <button id="tabBtnReports" class="tab-btn" data-tab="reports" data-admin-only hidden role="tab" aria-controls="tab-reports" aria-selected="false" tabindex="-1">
+        <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 24V9h5v15M11 24V5h6v19M19 24V13h4v11" /></svg>
+        <span>Laporan</span>
       </button>
       <button id="tabBtnSettings" class="tab-btn" data-tab="settings" data-admin-only hidden role="tab" aria-controls="tab-settings" aria-selected="false" tabindex="-1">
         <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 8h10M21 8h2M5 20h2M13 20h10" /><circle cx="18" cy="8" r="3" /><circle cx="10" cy="20" r="3" /></svg>

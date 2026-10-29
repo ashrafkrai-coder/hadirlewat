@@ -255,9 +255,11 @@ input[type="range"] { width: 100%; accent-color: var(--blue); height: 28px; }
 .row .name { flex: 1; min-width: 0; font-weight: 500; overflow-wrap: anywhere; line-height: 1.25; }
 .row .meta { display: block; font-weight: 400; font-size: 13px; color: var(--text2); margin-top: 2px; }
 .row .tag { font-size: 13px; font-weight: 600; color: var(--green); flex: none; }
+.row .tag.late-tag { color: #9a6700; }
 .row .tag:empty { display: none; }
 .row .actions { display: flex; gap: 8px; flex: none; }
 .row.present .avatar { box-shadow: 0 0 0 2.5px var(--grouped), 0 0 0 4.5px var(--green); }
+.avatar-hidden { background: #7c8798 !important; color: #fff; letter-spacing: 1px; }
 
 #stuList .row { flex-wrap: wrap; row-gap: 8px; }
 #stuList .row .actions { flex-basis: 100%; padding-left: 54px; flex-wrap: wrap; }
@@ -274,7 +276,7 @@ input[type="range"] { width: 100%; accent-color: var(--blue); height: 28px; }
 /* ---------- Bar tab bawah ---------- */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: flex; flex-wrap: nowrap;
   padding: 6px 12px calc(6px + var(--safe-bottom));
   background: var(--glass);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
@@ -283,7 +285,7 @@ input[type="range"] { width: 100%; accent-color: var(--blue); height: 28px; }
 }
 .tab-btn {
   appearance: none; border: 0; background: none; font: inherit; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 0;
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px;
   color: var(--text2); font-size: 10.5px; font-weight: 500; letter-spacing: 0.01em;
   transition: color .15s ease, transform .12s ease;
 }

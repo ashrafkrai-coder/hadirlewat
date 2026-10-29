@@ -3,6 +3,7 @@
  * face-api.js (vladmandic) dihos tempatan. Tiada gambar disimpan.
  * ============================================================ */
 import * as faceapi from './vendor/face-api.esm.js';
+import { isLate, lateCategory, lateOccurrence as countLateOccurrence } from './lateRules.js';
 
 const MODEL_URL = './vendor/models';
 const LS = { settings: 'hw.settings', students: 'hw.students', att: 'hw.att', admin: 'hw.admin.auth' };
@@ -20,7 +21,15 @@ const defaults = {
   token: '',
   threshold: 0.5,
   hits: 3,
-  consent: false
+  consent: false,
+  maxFaces: 5,
+  resolution: 720,
+  inputSize: 416,
+  sound: true,
+  vibration: true,
+  speech: true,
+  queueMode: false,
+  adminMinutes: 30
 };
 let settings = { ...defaults, ...load(LS.settings, {}) };
 settings.threshold = Number(settings.threshold);
@@ -47,6 +56,8 @@ let fpsLast = performance.now();
 let toastTimer = 0;
 let audioCtx = null;
 let isAdmin = sessionStorage.getItem('hw.admin.session') === '1';
+let adminActivityTimer = 0;
+let adminLastActivity = Date.now();
 
 /* ---------------- Simpanan ---------------- */
 function load(key, fallback) {
@@ -75,6 +86,8 @@ function activeStudents() {
 }
 
 let studentClassFilter = '';
+let attNameSearch = '';
+let attClassSearch = '';
 
 function studentClasses() {
   return [...new Set(students.map((s) => String(s.kelas || '').trim()).filter(Boolean))]
@@ -100,6 +113,12 @@ function refreshStudentClassFilters() {
   }
   if (add) {
     add.innerHTML = classes.map((kelas) => `<option value="${esc(kelas)}">${esc(kelas)}</option>`).join('');
+  }
+  const attendanceClass = $('attClassSearch');
+  if (attendanceClass) {
+    attendanceClass.innerHTML = '<option value="">Semua kelas</option>' + classes.map((kelas) =>
+      `<option value="${esc(kelas)}">${esc(kelas)}</option>`).join('');
+    attendanceClass.value = classes.includes(attClassSearch) ? attClassSearch : '';
   }
 }
 
@@ -164,8 +183,27 @@ async function loginAdmin() {
   updateAdminMode();
   renderAttendance();
   initConsent();
+  startAdminTimeout();
   toast('Log masuk pentadbir berjaya.', 'ok');
 }
+
+function startAdminTimeout() {
+  clearInterval(adminActivityTimer);
+  adminLastActivity = Date.now();
+  if (!isAdmin) return;
+  adminActivityTimer = setInterval(() => {
+    const limit = Math.max(1, Number(settings.adminMinutes || 30)) * 60000;
+    if (Date.now() - adminLastActivity >= limit) {
+      isAdmin = false;
+      sessionStorage.removeItem('hw.admin.session');
+      updateAdminMode();
+      toast('Sesi pentadbir tamat. Sila log masuk semula.', '');
+    }
+  }, 30000);
+}
+['click', 'keydown', 'touchstart'].forEach((eventName) => document.addEventListener(eventName, () => {
+  adminLastActivity = Date.now();
+}));
 
 function requireAdmin(action) {
   if (isAdmin) return true;
@@ -222,19 +260,18 @@ function avatar(nama) {
   for (const c of nama) h = (h * 31 + c.charCodeAt(0)) % 360;
   return `<span class="avatar" style="--h:${h}" aria-hidden="true">${esc(ini)}</span>`;
 }
-function beep() {
+function beep(frequency = 880) {
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    o.frequency.value = 880;
+    o.frequency.value = frequency;
     g.gain.value = 0.08;
     o.connect(g);
     g.connect(audioCtx.destination);
     o.start();
     o.stop(audioCtx.currentTime + 0.12);
   } catch {}
-  if (navigator.vibrate) navigator.vibrate(60);
 }
 
 /* ---------------- Rekod kehadiran ---------------- */
@@ -250,6 +287,14 @@ function markPresent(id, kaedah) {
   rec[id] = { masa: nowTime(), kaedah };
   saveAtt();
   renderAttendance();
+  const student = students.find((s) => s.id === id);
+  const lewat = lateInfo(id, rec[id]);
+  if (settings.sound) beep(lewat.late ? 660 : 880);
+  if (settings.vibration && navigator.vibrate) navigator.vibrate(lewat.late ? [40, 40, 40] : 60);
+  if (settings.speech && student && 'speechSynthesis' in window) {
+    speechSynthesis.cancel();
+    speechSynthesis.speak(new SpeechSynthesisUtterance(lewat.late ? `${student.nama}, lewat, ${lewat.kategori}` : `${student.nama}, hadir`));
+  }
   return true;
 }
 function unmark(id) {
@@ -257,6 +302,16 @@ function unmark(id) {
   delete rec[id];
   saveAtt();
   renderAttendance();
+}
+
+function lateOccurrence(id, recordKey = attKey()) {
+  return countLateOccurrence(attendance, id, recordKey);
+}
+
+function lateInfo(id, r) {
+  if (!r || !isLate(r.masa)) return { late: false, kali: 0, kategori: '' };
+  const kali = lateOccurrence(id);
+  return { late: true, kali, kategori: lateCategory(kali) };
 }
 
 /* ---------------- Paparan: senarai kehadiran ---------------- */
@@ -274,17 +329,27 @@ function renderAttendance() {
   $('ringFg').style.strokeDashoffset = String(188.5 * (1 - pct));
   $('ringPct').textContent = `${Math.round(pct * 100)}%`;
 
-  list.innerHTML = activeStudents()
-    .map((s) => {
+  const visible = activeStudents().filter((s) => {
+    const classOk = !attClassSearch || String(s.kelas || '') === attClassSearch;
+    const nameOk = !attNameSearch || s.nama.toLocaleLowerCase('ms').includes(attNameSearch);
+    return classOk && nameOk;
+  });
+  $('attEmpty').hidden = visible.length > 0;
+
+  list.innerHTML = visible.map((s, index) => {
       const r = rec[s.id];
+      const lewat = lateInfo(s.id, r);
+      const matchedBySearch = attNameSearch.length > 0 || attClassSearch.length > 0;
+      const showName = !!r || matchedBySearch;
+      const displayName = showName ? esc(s.nama) : `Murid ${String(index + 1).padStart(2, '0')}`;
+      const statusTag = r ? (lewat.late ? `Lewat · ${esc(lewat.kategori)}` : '✓ Hadir') : '';
       return `<li class="row ${r ? 'present' : ''}">
-        ${avatar(s.nama)}
-        <span class="name">${esc(s.nama)}<span class="meta">${r ? `${r.masa} · ${r.kaedah}` : 'Belum hadir'}</span></span>
-        <span class="tag">${r ? '✓ Hadir' : ''}</span>
+        ${showName ? avatar(s.nama) : '<span class="avatar avatar-hidden" aria-hidden="true">•••</span>'}
+        <span class="name">${displayName}<span class="meta">${r ? `${r.masa} · ${r.kaedah}${lewat.late ? ` · Lewat kali ke-${lewat.kali}` : ''}` : 'Belum hadir'}</span></span>
+        <span class="tag ${lewat.late ? 'late-tag' : ''}">${statusTag}</span>
         ${isAdmin ? `<span class="actions"><button class="btn btn-tiny" data-act="toggle" data-id="${s.id}">${r ? 'Batal' : 'Tanda'}</button></span>` : ''}
       </li>`;
-    })
-    .join('');
+    }).join('');
 }
 
 /* ---------------- Paparan: senarai murid ---------------- */
@@ -337,9 +402,10 @@ async function openCamera(video) {
     throw new Error('Pelayar tidak menyokong kamera, atau halaman bukan HTTPS/localhost.');
   }
   closeStream();
+  const cameraHeight = Number(settings.resolution || 720);
   stream = await navigator.mediaDevices.getUserMedia({
     audio: false,
-    video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    video: { facingMode: { ideal: facingMode }, width: { ideal: Math.round(cameraHeight * 16 / 9) }, height: { ideal: cameraHeight } }
   });
   video.srcObject = stream;
   video.classList.toggle('mirror', facingMode === 'user');
@@ -371,7 +437,7 @@ function cameraError(err) {
 }
 
 /* ---------------- Gelung pengesanan ---------------- */
-const detOpts = () => new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
+const detOpts = () => new faceapi.TinyFaceDetectorOptions({ inputSize: settings.inputSize || 416, scoreThreshold: 0.5 });
 
 async function loop() {
   if (!loopActive || !active) return;
@@ -383,7 +449,8 @@ async function loop() {
     }
     let results = [];
     try {
-      results = await faceapi.detectAllFaces(video, detOpts()).withFaceLandmarks(true).withFaceDescriptors();
+      const detected = await faceapi.detectAllFaces(video, detOpts()).withFaceLandmarks(true).withFaceDescriptors();
+      results = detected.slice(0, settings.maxFaces || 5);
     } catch (e) {
       console.warn('[AI] pengesanan gagal:', e);
     }
@@ -445,8 +512,8 @@ function drawBox(ctx, w, box, mirrored, label, color) {
   ctx.strokeStyle = color;
   ctx.strokeRect(x, box.y, box.width, box.height);
 
-  const fs = Math.max(14, Math.round(w / 36));
-  ctx.font = `600 ${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const fs = Math.max(22, Math.round(w / 24));
+  ctx.font = `700 ${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
   ctx.textBaseline = 'middle';
   const tw = Math.min(ctx.measureText(label).width + fs, w - 8);
   const th = fs * 1.7;
@@ -465,6 +532,7 @@ function handleScan(results) {
   const mirrored = facingMode === 'user';
   const rec = currentAtt();
   const seen = new Set();
+  if (settings.queueMode && results.length > 1) results = results.slice(0, 1);
 
   results.forEach((r) => {
     const m = matchDescriptor(r.descriptor);
@@ -476,7 +544,6 @@ function handleScan(results) {
         drawBox(ctx, canvas.width, r.detection.box, mirrored, `✓ ${s.nama}`, '#30d158');
       } else if (hitCounter[m.id] >= settings.hits) {
         if (markPresent(m.id, 'wajah')) {
-          beep();
           toast(`Hadir: ${s.nama}`, 'ok');
         }
         drawBox(ctx, canvas.width, r.detection.box, mirrored, `✓ ${s.nama}`, '#30d158');
@@ -756,7 +823,10 @@ function buildRecords() {
       kelas: s.kelas || '',
       status: r ? 'Hadir' : 'Tidak Hadir',
       masa: r ? r.masa : '',
-      kaedah: r ? r.kaedah : ''
+      kaedah: r ? r.kaedah : '',
+      lewat: r ? (isLate(r.masa) ? 'Lewat' : '') : '',
+      kaliLewat: r ? lateOccurrence(s.id) : 0,
+      kesalahan: r ? lateInfo(s.id, r).kategori : ''
     };
   });
 }
@@ -770,9 +840,9 @@ function exportCsv() {
     if (/^[=+@-]/.test(text)) text = "'" + text;
     return `"${text.replace(/"/g, '""')}"`;
   };
-  const lines = [['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah'].map(csvSafe).join(',')];
+  const lines = [['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Lewat', 'Kali Lewat', 'Kesalahan'].map(csvSafe).join(',')];
   buildRecords().forEach((r) => {
-    lines.push([tarikh, sesi, r.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah].map(csvSafe).join(','));
+    lines.push([tarikh, sesi, r.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah, r.lewat, r.kaliLewat || '', r.kesalahan].map(csvSafe).join(','));
   });
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -782,6 +852,55 @@ function exportCsv() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function updateStorageInfo() {
+  let bytes = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    bytes += (key || '').length + (localStorage.getItem(key) || '').length;
+  }
+  const size = bytes < 1024 ? `${bytes} bait` : `${(bytes / 1024).toFixed(1)} KB`;
+  if ($('storageInfo')) $('storageInfo').textContent = `Anggaran penggunaan storan: ${size}.`;
+  const lastSync = localStorage.getItem('hw.lastSync');
+  if ($('lastSyncInfo')) $('lastSyncInfo').textContent = lastSync ? `Penghantaran terakhir: ${new Date(lastSync).toLocaleString('ms-MY')}` : 'Belum pernah dihantar ke Google Sheet.';
+}
+
+function monthlyLateReport() {
+  const month = ($('reportMonth').value || todayStr().slice(0, 7));
+  const summary = new Map();
+  Object.entries(attendance).forEach(([key, records]) => {
+    const tarikh = key.split('|')[0];
+    if (!tarikh.startsWith(month)) return;
+    Object.entries(records || {}).forEach(([id, record]) => {
+      if (!record || !isLate(record.masa)) return;
+      const student = students.find((s) => s.id === id);
+      if (!student) return;
+      const item = summary.get(id) || { nama: student.nama, kelas: student.kelas || '', kali: 0, tarikh: [] };
+      item.kali++;
+      item.tarikh.push(`${tarikh} ${record.masa}`);
+      summary.set(id, item);
+    });
+  });
+  return [...summary.entries()].map(([id, item]) => ({ id, ...item, kategori: lateCategory(item.kali) })).sort((a, b) => b.kali - a.kali || a.nama.localeCompare(b.nama, 'ms'));
+}
+
+function renderLateReport() {
+  const rows = monthlyLateReport();
+  $('lateReportEmpty').hidden = rows.length > 0;
+  $('lateReport').innerHTML = rows.map((r) => `<li class="row"><span class="name">${esc(r.nama)}<span class="meta">${esc(r.kelas || 'Kelas belum ditetapkan')} · ${esc(r.tarikh.join(', '))}</span></span><span class="tag late-tag">${r.kali} kali · ${esc(r.kategori)}</span></li>`).join('');
+}
+
+function exportLateReport() {
+  const rows = monthlyLateReport();
+  if (!rows.length) return toast('Tiada rekod lewat untuk dieksport.', 'err');
+  const lines = [['Bulan', 'Nama', 'Kelas', 'Kali Lewat', 'Kategori', 'Tarikh dan Masa'].join(','), ...rows.map((r) => [$('reportMonth').value, r.nama, r.kelas, r.kali, r.kategori, r.tarikh.join('; ')].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))];
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `laporan_lewat_${$('reportMonth').value || todayStr().slice(0, 7)}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 2000);
 }
 
 async function sendToSheet() {
@@ -806,6 +925,8 @@ async function sendToSheet() {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Ditolak oleh pelayan');
+    localStorage.setItem('hw.lastSync', new Date().toISOString());
+    updateStorageInfo();
     toast(`Dihantar: ${data.ditulis} baris dikemas kini`, 'ok');
   } catch (e) {
     toast('Gagal menghantar: ' + e.message, 'err');
@@ -867,6 +988,14 @@ $('btnFlipEnrol').addEventListener('click', () => flipCamera($('vidEnrol'), $('s
 $('studentClassFilter').addEventListener('change', (e) => {
   studentClassFilter = e.target.value;
   renderStudents();
+});
+$('attNameSearch').addEventListener('input', (e) => {
+  attNameSearch = e.target.value.trim().toLocaleLowerCase('ms');
+  renderAttendance();
+});
+$('attClassSearch').addEventListener('change', (e) => {
+  attClassSearch = e.target.value;
+  renderAttendance();
 });
 $('fDate').addEventListener('change', renderAttendance);
 $('fSesi').addEventListener('input', () => {
@@ -953,6 +1082,41 @@ bindSetting('sUrl', 'scriptUrl', (v) => v.trim());
 bindSetting('sToken', 'token', (v) => v.trim());
 bindSetting('sThr', 'threshold', parseFloat, () => ($('sThrVal').textContent = settings.threshold.toFixed(2)));
 bindSetting('sHits', 'hits', (v) => parseInt(v, 10), () => ($('sHitsVal').textContent = settings.hits));
+bindSetting('sQueueMode', 'queueMode', (v) => v === 'true');
+bindSetting('sMaxFaces', 'maxFaces', (v) => parseInt(v, 10));
+bindSetting('sResolution', 'resolution', (v) => parseInt(v, 10));
+bindSetting('sInputSize', 'inputSize', (v) => parseInt(v, 10));
+bindSetting('sAdminMinutes', 'adminMinutes', (v) => parseInt(v, 10));
+['sSound', 'sVibration', 'sSpeech'].forEach((id) => {
+  const key = id === 'sSound' ? 'sound' : id === 'sVibration' ? 'vibration' : 'speech';
+  $(id).addEventListener('change', () => { settings[key] = $(id).checked; saveSettings(); });
+});
+
+$('btnReportRefresh').addEventListener('click', renderLateReport);
+$('btnReportCsv').addEventListener('click', exportLateReport);
+
+$('btnBackup').addEventListener('click', () => {
+  const backup = { version: 1, exportedAt: new Date().toISOString(), settings, students, attendance };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `wajahhadir_sandaran_${todayStr()}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+});
+$('btnRestore').addEventListener('click', () => $('restoreFile').click());
+$('restoreFile').addEventListener('change', async () => {
+  const file = $('restoreFile').files[0];
+  if (!file) return;
+  try {
+    const backup = JSON.parse(await file.text());
+    if (!backup.settings || !Array.isArray(backup.students) || !backup.attendance) throw new Error('Format sandaran tidak sah');
+    if (!confirm('Pulihkan sandaran? Data semasa akan diganti.')) return;
+    save(LS.settings, backup.settings); save(LS.students, backup.students); save(LS.att, backup.attendance);
+    location.reload();
+  } catch (e) { toast('Gagal memulihkan sandaran: ' + e.message, 'err'); }
+  $('restoreFile').value = '';
+});
 
 $('btnWipeFaces').addEventListener('click', () => {
   if (!requireAdmin('Log masuk untuk memadam data wajah.')) return;
@@ -1045,6 +1209,15 @@ $('sThr').value = settings.threshold;
 $('sThrVal').textContent = Number(settings.threshold).toFixed(2);
 $('sHits').value = settings.hits;
 $('sHitsVal').textContent = settings.hits;
+$('sQueueMode').value = String(!!settings.queueMode);
+$('sMaxFaces').value = String(settings.maxFaces || 5);
+$('sResolution').value = String(settings.resolution || 720);
+$('sInputSize').value = String(settings.inputSize || 416);
+$('sAdminMinutes').value = String(settings.adminMinutes || 30);
+$('sSound').checked = settings.sound !== false;
+$('sVibration').checked = settings.vibration !== false;
+$('sSpeech').checked = settings.speech !== false;
+$('reportMonth').value = todayStr().slice(0, 7);
 refreshStudentClassFilters();
 updateNet();
 renderAttendance();

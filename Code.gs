@@ -19,7 +19,7 @@ const SHEET_SENARAI = 'Senarai';
 const SHEET_LOG = 'Log';
 const PREFIX_JADUAL = 'Jadual';
 
-const HEADERS = ['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Dikemas kini'];
+const HEADERS = ['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Lewat', 'Kali Lewat', 'Kesalahan', 'Dikemas kini'];
 const LOG_HEADERS = ['Masa', 'Jenis', 'Tarikh', 'Sesi', 'Kelas', 'Nama', 'Sebelum', 'Selepas', 'Kaedah', 'Catatan'];
 const HARI = ['Ahd', 'Isn', 'Sel', 'Rab', 'Kha', 'Jum', 'Sab'];
 const HADIR = '✓';
@@ -61,6 +61,8 @@ function ensureSheet_(name, headers) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eefc');
     sh.setFrozenRows(1);
+  } else if (name === SHEET_REKOD && sh.getLastColumn() !== headers.length) {
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eefc');
   }
   return sh;
 }
@@ -301,7 +303,7 @@ function doPost(e) {
       if (!r || !['Hadir', 'Tidak Hadir'].includes(r.status) || typeof r.nama !== 'string' || !r.nama.trim()) throw new Error('Rekod murid tidak sah');
       const bil = Number(r.bil);
       if (!Number.isInteger(bil) || bil < 1) throw new Error('Nombor murid tidak sah');
-      const baris = [tarikh, selamatSheet_(sesi), selamatSheet_(kelas), bil, selamatSheet_(r.nama.trim()), r.status, selamatSheet_(r.masa), selamatSheet_(r.kaedah), sekarang];
+      const baris = [tarikh, selamatSheet_(sesi), selamatSheet_(kelas), bil, selamatSheet_(r.nama.trim()), r.status, selamatSheet_(r.masa), selamatSheet_(r.kaedah), selamatSheet_(r.lewat), Number(r.kaliLewat) || '', selamatSheet_(r.kesalahan), sekarang];
       const kunci = [tarikh, sesi, kelas, String(r.nama.trim())].join('|');
       if (kunci in peta) {
         const idx = peta[kunci];
