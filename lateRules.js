@@ -14,15 +14,16 @@ export function lateCategory(kali) {
 }
 
 export function lateOccurrence(attendance, studentId, recordKey) {
-  const occurrences = [];
-  Object.entries(attendance || {}).forEach(([key, records]) => {
-    const [tarikh, ...sesiParts] = key.split('|');
-    const record = records && records[studentId];
-    if (record && isLate(record.masa)) {
-      occurrences.push({ key, sort: `${tarikh}|${sesiParts.join('|')}|${record.masa}` });
-    }
-  });
-  occurrences.sort((a, b) => a.sort.localeCompare(b.sort, 'ms'));
-  const index = occurrences.findIndex((occurrence) => occurrence.key === recordKey);
-  return index >= 0 ? index + 1 : 0;
+  if (!Object.prototype.hasOwnProperty.call(attendance || {}, recordKey)) return 0;
+  const current = attendance[recordKey]?.[studentId];
+  if (!current || !isLate(current.masa)) return 0;
+  return [...Object.entries(attendance || {})]
+    .filter(([, records]) => records?.[studentId] && isLate(records[studentId].masa))
+    .sort(([a, aRecords], [b, bRecords]) => (
+      `${a}|${aRecords[studentId].masa}`.localeCompare(
+        `${b}|${bRecords[studentId].masa}`,
+        'ms'
+      )
+    ))
+    .findIndex(([key]) => key === recordKey) + 1;
 }

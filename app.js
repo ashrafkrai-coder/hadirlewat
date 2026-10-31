@@ -4,6 +4,7 @@
  * ============================================================ */
 import * as faceapi from './vendor/face-api.esm.js';
 import { isLate, lateCategory, lateOccurrence as countLateOccurrence } from './lateRules.js';
+import { execUrl, matchSheetStudent, sanitize } from './appUtils.js';
 
 const MODEL_URL = './vendor/models';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx1phTIJdcq_Gc8ycKgt7-vSWckql00OrD6sLZihDIm2ap13TFumwv6MWTtmvkXEqWmcw/exec';
@@ -13,6 +14,10 @@ const MAX_SAMPLES = 8;
 const MARGIN = 0.03; // beza minima antara padanan terbaik & kedua (elak keliru)
 
 const $ = (id) => document.getElementById(id);
+const on = (id, event, handler) => {
+  const el = $(id);
+  if (el) el.addEventListener(event, handler);
+};
 
 /* ---------------- Keadaan ---------------- */
 const defaults = {
@@ -34,13 +39,21 @@ const defaults = {
 };
 let settings = { ...defaults, ...load(LS.settings, {}) };
 if (!String(settings.scriptUrl || '').trim()) settings.scriptUrl = GAS_URL;
+settings = sanitizeSettings(settings);
 settings.threshold = Number(settings.threshold);
 settings.hits = parseInt(settings.hits, 10);
 if (!Number.isFinite(settings.threshold) || settings.threshold < 0.35 || settings.threshold > 0.60) settings.threshold = defaults.threshold;
 if (!Number.isInteger(settings.hits) || settings.hits < 2 || settings.hits > 8) settings.hits = defaults.hits;
+settings.maxFaces = Number(settings.maxFaces);
+settings.resolution = Number(settings.resolution);
+settings.inputSize = Number(settings.inputSize);
 let students = load(LS.students, []); // {id, nama, kelas, d:[[128]...]}
 if (!Array.isArray(students)) students = [];
-students.forEach((student) => { if (!student.kelas) student.kelas = ''; });
+students = students.filter((student) => student && typeof student === 'object');
+students.forEach((student) => {
+  student.nama = sanitize(student.nama, 120);
+  student.kelas = sanitize(student.kelas, 60);
+});
 let attendance = load(LS.att, {}); // {"tarikh|sesi": {id: {masa, kaedah}}}
 if (!attendance || typeof attendance !== 'object' || Array.isArray(attendance)) attendance = {};
 
@@ -69,6 +82,14 @@ function load(key, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function sanitizeSettings(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const maxFaces = [3, 5, 8].includes(Number(source.maxFaces)) ? Number(source.maxFaces) : defaults.maxFaces;
+  const resolution = [480, 720, 1080].includes(Number(source.resolution)) ? Number(source.resolution) : defaults.resolution;
+  const inputSize = [224, 416, 608].includes(Number(source.inputSize)) ? Number(source.inputSize) : defaults.inputSize;
+  return { ...defaults, ...source, scriptUrl: execUrl(source.scriptUrl, defaults.scriptUrl), maxFaces, resolution, inputSize };
 }
 function save(key, value) {
   try {
@@ -277,7 +298,7 @@ function beep(frequency = 880) {
 }
 
 /* ---------------- Rekod kehadiran ---------------- */
-const attKey = () => `${$('fDate').value || todayStr()}|${($('fSesi').value || '').trim() || '-'}`;
+const attKey = () => `${sanitize($('fDate').value || todayStr(), 10)}|${sanitize($('fSesi').value, 60) || '-'}`;
 function currentAtt() {
   const k = attKey();
   if (!attendance[k]) attendance[k] = {};
@@ -757,8 +778,9 @@ async function loadFromSheet() {
   btn.disabled = true;
   btn.textContent = 'Memuat...';
   try {
-    const u = new URL(settings.scriptUrl);
-    u.pathname = u.pathname.replace(/\/dev$/, '/exec');
+    const exec = execUrl(settings.scriptUrl, GAS_URL);
+    if (!exec) throw new Error('URL deployment tidak sah. Semak deployment Web App dalam Tetapan.');
+    const u = new URL(exec);
 
     let data;
     let errorMessage = '';
@@ -785,15 +807,14 @@ async function loadFromSheet() {
       catch { throw new Error(errorMessage || text.trim().slice(0, 160) || 'Pelayan tidak mengembalikan JSON.'); }
     }
 
-    if (!data.ok) throw new Error(data.error || 'Ralat tidak diketahui');
+    if (!data.ok) throw new Error(data.error || 'Ralat tidak diketahui. Pastikan deployment Web App dikemas kini dan boleh diakses.');
     const rows = (Array.isArray(data.murid) ? data.murid : []).map((item) =>
       typeof item === 'string' ? { nama: item.trim(), kelas: '' } : { nama: String(item.nama || '').trim(), kelas: String(item.kelas || '').trim() }
     ).filter((item) => item.nama);
     if (!rows.length) throw new Error('Tiada nama murid dijumpai dalam tab Senarai.');
     let added = 0;
     rows.forEach((row) => {
-      const key = row.nama.toLowerCase();
-      const existing = students.find((s) => s.nama.toLowerCase() === key);
+      const existing = matchSheetStudent(students, row);
       if (existing) {
         existing.kelas = row.kelas || existing.kelas || '';
       } else {
@@ -912,6 +933,12 @@ async function sendToSheet() {
   const btn = $('btnSend');
   btn.disabled = true;
   btn.textContent = 'Menghantar...';
+  const scriptUrl = execUrl(settings.scriptUrl, GAS_URL);
+  if (!scriptUrl) {
+    btn.disabled = false;
+    btn.textContent = 'Hantar ke Google Sheet';
+    return toast('URL deployment tidak sah. Semak deployment Web App dalam Tetapan.', 'err');
+  }
   const payload = {
     token: settings.token || '',
     kelas: '',
@@ -920,7 +947,7 @@ async function sendToSheet() {
     rekod: buildRecords()
   };
   try {
-    const res = await fetch(settings.scriptUrl, {
+    const res = await fetch(scriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)

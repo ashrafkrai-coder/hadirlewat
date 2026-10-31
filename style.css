@@ -140,6 +140,20 @@ small.muted { display: block; font-size: 12.5px; margin: 6px 0 0; }
 }
 .form-row input::placeholder { color: var(--text3); }
 .form-row input[type="date"] { color: var(--blue); }
+.form-row select {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  text-align: right;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 12px 24px 12px 0;
+  cursor: pointer;
+}
 textarea {
   width: 100%; font: inherit; color: var(--text); background: var(--elev);
   border: 0; border-radius: 12px; padding: 12px 14px; resize: vertical; margin-bottom: 12px; outline: none;
