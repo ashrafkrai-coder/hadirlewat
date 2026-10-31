@@ -923,13 +923,15 @@ function renderLateReport() {
 function exportLateReport() {
   const rows = monthlyLateReport();
   if (!rows.length) return toast('Tiada rekod lewat untuk dieksport.', 'err');
-  const lines = [['Bulan', 'Nama', 'Kelas', 'Kali Lewat', 'Kategori', 'Tarikh dan Masa'].join(','), ...rows.map((r) => [$('reportMonth').value, r.nama, r.kelas, r.kali, r.kategori, r.tarikh.join('; ')].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))];
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `laporan_lewat_${$('reportMonth').value || todayStr().slice(0, 7)}.csv`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+  const bulan = $('reportMonth').value || todayStr().slice(0, 7);
+  $('pdfReport').innerHTML = `
+    <h1>Laporan Lewat Bulanan</h1>
+    <p>Bulan: ${esc(bulan)}</p>
+    <table>
+      <thead><tr><th>Bil</th><th>Nama</th><th>Kelas</th><th>Kali Lewat</th><th>Kategori</th><th>Tarikh dan Masa</th></tr></thead>
+      <tbody>${rows.map((r, index) => `<tr><td>${index + 1}</td><td>${esc(r.nama)}</td><td>${esc(r.kelas)}</td><td>${r.kali}</td><td>${esc(r.kategori)}</td><td>${esc(r.tarikh.join(', '))}</td></tr>`).join('')}</tbody>
+    </table>`;
+  window.print();
 }
 
 async function sendToSheet(auto = false) {
@@ -1126,7 +1128,7 @@ bindSetting('sAdminMinutes', 'adminMinutes', (v) => parseInt(v, 10));
 });
 
 $('btnReportRefresh').addEventListener('click', renderLateReport);
-$('btnReportCsv').addEventListener('click', exportLateReport);
+$('btnReportPdf').addEventListener('click', exportLateReport);
 
 $('btnBackup').addEventListener('click', () => {
   const backup = { version: 1, exportedAt: new Date().toISOString(), settings, students, attendance };
