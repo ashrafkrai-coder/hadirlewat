@@ -19,8 +19,8 @@ const SHEET_SENARAI = 'Senarai';
 const SHEET_LOG = 'Log';
 const PREFIX_JADUAL = 'Jadual';
 
-const HEADERS = ['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Lewat', 'Kali Lewat', 'Kesalahan', 'Dikemas kini'];
-const LOG_HEADERS = ['Masa', 'Jenis', 'Tarikh', 'Sesi', 'Kelas', 'Nama', 'Sebelum', 'Selepas', 'Kaedah', 'Catatan'];
+const HEADERS = ['Tarikh', 'Hari', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Lewat', 'Kali Lewat', 'Kesalahan', 'Dikemas kini'];
+const LOG_HEADERS = ['Masa', 'Jenis', 'Tarikh', 'Hari', 'Kelas', 'Nama', 'Sebelum', 'Selepas', 'Kaedah', 'Catatan'];
 const HARI = ['Ahd', 'Isn', 'Sel', 'Rab', 'Kha', 'Jum', 'Sab'];
 const HADIR = '✓';
 const TIDAK = '✗';
@@ -61,7 +61,13 @@ function ensureSheet_(name, headers) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eefc');
     sh.setFrozenRows(1);
-  } else if (name === SHEET_REKOD && sh.getLastColumn() !== headers.length) {
+  } else {
+    const currentHeaders = sh.getRange(1, 1, 1, headers.length).getValues()[0];
+    if (currentHeaders.some((header, index) => header !== headers[index])) {
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eefc');
+    }
+  }
+  if (sh.getLastColumn() !== headers.length && name === SHEET_REKOD) {
     sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eefc');
   }
   return sh;
@@ -71,7 +77,7 @@ function getRekodSheet_() {
   const existed = !!getSS_().getSheetByName(SHEET_REKOD);
   const sh = ensureSheet_(SHEET_REKOD, HEADERS);
   if (!existed) {
-    // Tarikh, Sesi, Kelas dan Masa sebagai teks supaya tidak ditukar format oleh Sheets
+    // Tarikh, Hari, Kelas dan Masa sebagai teks supaya tidak ditukar format oleh Sheets
     sh.getRange('A:C').setNumberFormat('@');
     sh.getRange('G:G').setNumberFormat('@');
   }

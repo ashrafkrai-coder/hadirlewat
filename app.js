@@ -347,7 +347,7 @@ function renderAttendance() {
       const statusTag = r ? (lewat.late ? `Lewat · ${esc(lewat.kategori)}` : '✓ Hadir') : '';
       return `<li class="row ${r ? 'present' : ''}">
         ${showName ? avatar(s.nama) : '<span class="avatar avatar-hidden" aria-hidden="true">•••</span>'}
-        <span class="name">${displayName}<span class="meta">${r ? `${r.masa} · ${r.kaedah}${lewat.late ? ` · Lewat kali ke-${lewat.kali}` : ''}` : 'Belum hadir'}</span></span>
+        <span class="name">${displayName}<span class="meta">${esc(s.kelas || 'Kelas belum ditetapkan')}${r ? ` · ${r.masa} · ${r.kaedah}${lewat.late ? ` · Lewat kali ke-${lewat.kali}` : ''}` : ''}</span></span>
         <span class="tag ${lewat.late ? 'late-tag' : ''}">${statusTag}</span>
         ${isAdmin ? `<span class="actions"><button class="btn btn-tiny" data-act="toggle" data-id="${s.id}">${r ? 'Batal' : 'Tanda'}</button></span>` : ''}
       </li>`;
@@ -842,7 +842,7 @@ function exportCsv() {
     if (/^[=+@-]/.test(text)) text = "'" + text;
     return `"${text.replace(/"/g, '""')}"`;
   };
-  const lines = [['Tarikh', 'Sesi', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Lewat', 'Kali Lewat', 'Kesalahan'].map(csvSafe).join(',')];
+  const lines = [['Tarikh', 'Hari', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Lewat', 'Kali Lewat', 'Kesalahan'].map(csvSafe).join(',')];
   buildRecords().forEach((r) => {
     lines.push([tarikh, sesi, r.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah, r.lewat, r.kaliLewat || '', r.kesalahan].map(csvSafe).join(','));
   });
@@ -1229,4 +1229,3 @@ $('logoutBtn').hidden = !isAdmin;
 initAdminLogin(false).then(() => {
   if (isAdmin) initConsent();
 });
-
