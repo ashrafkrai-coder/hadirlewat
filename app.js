@@ -6,6 +6,7 @@ import * as faceapi from './vendor/face-api.esm.js';
 import { isLate, lateCategory, lateOccurrence as countLateOccurrence } from './lateRules.js';
 
 const MODEL_URL = './vendor/models';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbx1phTIJdcq_Gc8ycKgt7-vSWckql00OrD6sLZihDIm2ap13TFumwv6MWTtmvkXEqWmcw/exec';
 const LS = { settings: 'hw.settings', students: 'hw.students', att: 'hw.att', admin: 'hw.admin.auth' };
 const MIN_SAMPLES = 3;
 const MAX_SAMPLES = 8;
@@ -17,7 +18,7 @@ const $ = (id) => document.getElementById(id);
 const defaults = {
   kelas: '',
   sesi: '',
-  scriptUrl: '',
+  scriptUrl: GAS_URL,
   token: '',
   threshold: 0.5,
   hits: 3,
@@ -32,6 +33,7 @@ const defaults = {
   adminMinutes: 30
 };
 let settings = { ...defaults, ...load(LS.settings, {}) };
+if (!String(settings.scriptUrl || '').trim()) settings.scriptUrl = GAS_URL;
 settings.threshold = Number(settings.threshold);
 settings.hits = parseInt(settings.hits, 10);
 if (!Number.isFinite(settings.threshold) || settings.threshold < 0.35 || settings.threshold > 0.60) settings.threshold = defaults.threshold;

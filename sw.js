@@ -3,7 +3,7 @@
  * jadi aplikasi berfungsi sepenuhnya luar talian selepas larian pertama.
  * Tukar VERSION apabila anda mengemas kini mana-mana fail.
  */
-const VERSION = 'v1.3.0-hadir-lewat';
+const VERSION = 'v1.3.1-hadir-lewat';
 const CACHE = `hadir-lewat-${VERSION}`;
 
 const PRECACHE = [
