@@ -4,7 +4,7 @@
  * ============================================================ */
 import * as faceapi from './vendor/face-api.esm.js';
 import { isLate, lateCategory, lateOccurrence as countLateOccurrence } from './lateRules.js';
-import { execUrl, matchSheetStudent, sanitize } from './appUtils.js';
+import { execUrl, matchSheetStudent, sanitize, studentLevel } from './appUtils.js';
 
 const MODEL_URL = './vendor/models';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx1phTIJdcq_Gc8ycKgt7-vSWckql00OrD6sLZihDIm2ap13TFumwv6MWTtmvkXEqWmcw/exec';
@@ -111,6 +111,7 @@ function activeStudents() {
 let studentClassFilter = '';
 let attNameSearch = '';
 let attClassSearch = '';
+const revealedLateStudents = new Set();
 
 function studentClasses() {
   return [...new Set(students.map((s) => String(s.kelas || '').trim()).filter(Boolean))]
@@ -309,6 +310,7 @@ function markPresent(id, kaedah) {
   if (rec[id]) return false;
   rec[id] = { masa: nowTime(), kaedah };
   saveAtt();
+  if (isLate(rec[id].masa)) revealedLateStudents.add(id);
   renderAttendance();
   const student = students.find((s) => s.id === id);
   const lewat = lateInfo(id, rec[id]);
@@ -318,6 +320,7 @@ function markPresent(id, kaedah) {
     speechSynthesis.cancel();
     speechSynthesis.speak(new SpeechSynthesisUtterance(lewat.late ? `${student.nama}, lewat, ${lewat.kategori}` : `${student.nama}, hadir`));
   }
+  if (lewat.late) void sendToSheet(true);
   return true;
 }
 function unmark(id) {
@@ -343,20 +346,30 @@ function renderAttendance() {
   const list = $('attList');
   const current = activeStudents();
   const present = current.filter((s) => rec[s.id]).length;
-  $('cntPresent').textContent = present;
-  $('cntAbsent').textContent = current.length - present;
-  $('cntTotal').textContent = current.length;
+  const lateToday = current.filter((s) => rec[s.id] && isLate(rec[s.id].masa)).length;
+  $('cntLate').textContent = lateToday;
   $('attEmpty').hidden = current.length > 0;
 
-  const pct = current.length ? present / current.length : 0;
-  $('ringFg').style.strokeDashoffset = String(188.5 * (1 - pct));
-  $('ringPct').textContent = `${Math.round(pct * 100)}%`;
+  const levels = new Map();
+  current.forEach((s) => {
+    if (!rec[s.id] || !isLate(rec[s.id].masa)) return;
+    const level = studentLevel(s.kelas);
+    levels.set(level, (levels.get(level) || 0) + 1);
+  });
+  const order = Array.from({ length: 5 }, (_, i) => `Tingkatan ${i + 1}`);
+  const levelNames = [...order, ...[...levels.keys()].filter((level) => !order.includes(level)).sort()];
+  $('lateByLevel').innerHTML = levelNames
+    .filter((level) => levels.has(level))
+    .map((level) => `<div class="level-stat"><span>${esc(level)}</span><b>${levels.get(level)}</b></div>`)
+    .join('');
 
-  const visible = activeStudents().filter((s) => {
+  const searching = attNameSearch.length > 0 || attClassSearch.length > 0;
+  const visible = searching ? activeStudents().filter((s) => {
     const classOk = !attClassSearch || String(s.kelas || '') === attClassSearch;
     const nameOk = !attNameSearch || s.nama.toLocaleLowerCase('ms').includes(attNameSearch);
     return classOk && nameOk;
-  });
+  }) : activeStudents().filter((s) => revealedLateStudents.has(s.id) && !!rec[s.id] && isLate(rec[s.id].masa));
+  $('attResults').hidden = visible.length === 0 && !searching;
   $('attEmpty').hidden = visible.length > 0;
 
   list.innerHTML = visible.map((s, index) => {
@@ -854,27 +867,20 @@ function buildRecords() {
   });
 }
 
-function exportCsv() {
+function exportPdf() {
   if (!activeStudents().length) return toast('Tiada murid untuk dieksport.', 'err');
   const tarikh = $('fDate').value || todayStr();
   const sesi = ($('fSesi').value || '').trim();
-  const csvSafe = (v) => {
-    let text = String(v);
-    if (/^[=+@-]/.test(text)) text = "'" + text;
-    return `"${text.replace(/"/g, '""')}"`;
-  };
-  const lines = [['Tarikh', 'Hari', 'Kelas', 'Bil', 'Nama', 'Status', 'Masa', 'Kaedah', 'Lewat', 'Kali Lewat', 'Kesalahan'].map(csvSafe).join(',')];
-  buildRecords().forEach((r) => {
-    lines.push([tarikh, sesi, r.kelas, r.bil, r.nama, r.status, r.masa, r.kaedah, r.lewat, r.kaliLewat || '', r.kesalahan].map(csvSafe).join(','));
-  });
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `kehadiran_${tarikh}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  const rows = buildRecords().filter((r) => r.lewat === 'Lewat');
+  if (!rows.length) return toast('Tiada rekod lewat untuk dieksport.', 'err');
+  $('pdfReport').innerHTML = `
+    <h1>Laporan Murid Lewat</h1>
+    <p>Tarikh: ${esc(tarikh)}${sesi ? ` · Hari: ${esc(sesi)}` : ''}</p>
+    <table>
+      <thead><tr><th>Bil</th><th>Nama</th><th>Kelas</th><th>Masa</th><th>Kali Lewat</th><th>Kesalahan</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr><td>${r.bil}</td><td>${esc(r.nama)}</td><td>${esc(r.kelas)}</td><td>${esc(r.masa)}</td><td>${r.kaliLewat || ''}</td><td>${esc(r.kesalahan)}</td></tr>`).join('')}</tbody>
+    </table>`;
+  window.print();
 }
 
 function updateStorageInfo() {
@@ -926,18 +932,20 @@ function exportLateReport() {
   setTimeout(() => URL.revokeObjectURL(link.href), 2000);
 }
 
-async function sendToSheet() {
-  if (!settings.scriptUrl) return toast('Isi URL Web App dalam Tetapan dahulu.', 'err');
-  if (!activeStudents().length) return toast('Tiada murid untuk dihantar.', 'err');
-  if (!navigator.onLine) return toast('Anda luar talian. Cuba lagi bila dalam talian.', 'err');
-  const btn = $('btnSend');
-  btn.disabled = true;
-  btn.textContent = 'Menghantar...';
+async function sendToSheet(auto = false) {
+  if (!settings.scriptUrl) {
+    if (!auto) toast('Isi URL Web App dalam Tetapan dahulu.', 'err');
+    return;
+  }
+  if (!activeStudents().length) return;
+  if (!navigator.onLine) {
+    if (!auto) toast('Anda luar talian. Cuba lagi bila dalam talian.', 'err');
+    return;
+  }
   const scriptUrl = execUrl(settings.scriptUrl, GAS_URL);
   if (!scriptUrl) {
-    btn.disabled = false;
-    btn.textContent = 'Hantar ke Google Sheet';
-    return toast('URL deployment tidak sah. Semak deployment Web App dalam Tetapan.', 'err');
+    if (!auto) toast('URL deployment tidak sah. Semak deployment Web App dalam Tetapan.', 'err');
+    return;
   }
   const payload = {
     token: settings.token || '',
@@ -956,12 +964,9 @@ async function sendToSheet() {
     if (!data.ok) throw new Error(data.error || 'Ditolak oleh pelayan');
     localStorage.setItem('hw.lastSync', new Date().toISOString());
     updateStorageInfo();
-    toast(`Dihantar: ${data.ditulis} baris dikemas kini`, 'ok');
+    if (!auto) toast(`Dihantar: ${data.ditulis} baris dikemas kini`, 'ok');
   } catch (e) {
-    toast('Gagal menghantar: ' + e.message, 'err');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Hantar ke Google Sheet';
+    if (!auto) toast('Gagal menghantar: ' + e.message, 'err');
   }
 }
 
@@ -1095,8 +1100,7 @@ $('btnEnrolReset').addEventListener('click', () => {
 });
 $('btnEnrolCancel').addEventListener('click', finishEnrol);
 
-$('btnCsv').addEventListener('click', exportCsv);
-$('btnSend').addEventListener('click', sendToSheet);
+$('btnPdf').addEventListener('click', exportPdf);
 
 /* Tetapan */
 function bindSetting(id, key, transform = (v) => v, after) {

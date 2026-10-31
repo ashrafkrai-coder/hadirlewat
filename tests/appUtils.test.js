@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execUrl, matchSheetStudent, normalizedName, sanitize } from '../appUtils.js';
+import { execUrl, matchSheetStudent, normalizedName, sanitize, studentLevel } from '../appUtils.js';
 
 test('sanitize membersihkan ruang dan aksara berbahaya', () => {
   assert.equal(sanitize('  <Ali> & "Abu"  '), 'Ali Abu');
@@ -29,4 +29,11 @@ test('padanan nama dan kelas Sheet mengenal pasti murid yang betul', () => {
 test('kelas kosong dalam Sheet tidak menukar murid kelas yang sama nama', () => {
   const students = [{ id: '1', nama: 'Ali Abu', kelas: '1 Anggerik' }];
   assert.equal(matchSheetStudent(students, { nama: 'Ali Abu', kelas: '' }).id, '1');
+});
+
+test('studentLevel mengenal pasti tingkatan daripada format kelas lazim', () => {
+  assert.equal(studentLevel('Tingkatan 1 Anggerik'), 'Tingkatan 1');
+  assert.equal(studentLevel('1 Anggerik'), 'Tingkatan 1');
+  assert.equal(studentLevel('Form 4 Bestari'), 'Tingkatan 4');
+  assert.equal(studentLevel('T5 Cemerlang'), 'Tingkatan 5');
 });

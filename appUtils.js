@@ -34,3 +34,10 @@ export function matchSheetStudent(students, row) {
     return normalizedName(student.nama) === name && (!className || !studentClass || studentClass === className);
   }) || null;
 }
+
+export function studentLevel(className) {
+  const value = String(className || '').trim();
+  const match = value.match(/(?:tingkatan\s*|form\s*|^T\s*)([1-5])/i)
+    || value.match(/^([1-5])(?:\s|$)/);
+  return match ? `Tingkatan ${match[1]}` : (value ? 'Lain-lain' : 'Belum ditetapkan');
+}

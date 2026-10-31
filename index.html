@@ -64,18 +64,10 @@
         <p id="statusScan" class="status-line" role="status">Sedia.</p>
 
         <div class="summary-card">
-          <div class="ring" aria-hidden="true">
-            <svg viewBox="0 0 72 72">
-              <circle class="ring-bg" cx="36" cy="36" r="30" />
-              <circle id="ringFg" class="ring-fg" cx="36" cy="36" r="30" />
-            </svg>
-            <span id="ringPct">0%</span>
-          </div>
           <div class="stats">
-            <div class="stat"><b id="cntPresent" class="c-ok">0</b><small>Hadir</small></div>
-            <div class="stat"><b id="cntAbsent" class="c-warn">0</b><small>Belum</small></div>
-            <div class="stat"><b id="cntTotal">0</b><small>Jumlah</small></div>
+            <div class="stat"><b id="cntLate" class="c-warn">0</b><small>Lewat Hari Ini</small></div>
           </div>
+          <div id="lateByLevel" class="level-stats"></div>
         </div>
 
         <h2 class="section-label">Cari murid</h2>
@@ -84,14 +76,16 @@
           <label class="form-row"><span class="form-label">Kelas</span><select id="attClassSearch"><option value="">Semua kelas</option></select></label>
           <p class="muted">Nama disembunyikan sehingga dipadankan oleh wajah atau ditemui melalui carian.</p>
         </div>
-        <h2 class="section-label">Senarai murid</h2>
-        <ul id="attList" class="list"></ul>
-        <p id="attEmpty" class="empty" hidden>Belum ada murid. Buka tab <strong>Murid</strong> untuk menambah senarai.</p>
+        <div id="attResults" hidden>
+          <h2 class="section-label">Senarai murid</h2>
+          <ul id="attList" class="list"></ul>
+          <p id="attEmpty" class="empty" hidden>Belum ada murid. Buka tab <strong>Murid</strong> untuk menambah senarai.</p>
+        </div>
 
         <div class="controls">
-          <button id="btnCsv" class="btn">Eksport CSV</button>
-          <button id="btnSend" class="btn btn-tint">Hantar ke Google Sheet</button>
+          <button id="btnPdf" class="btn">Eksport ke PDF</button>
         </div>
+        <section id="pdfReport" aria-hidden="true"></section>
       </section>
 
       <!-- ============ TAB MURID ============ -->
